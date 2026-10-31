@@ -1,6 +1,6 @@
 FROM node:22-bookworm-slim
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 COPY vendor ./vendor
 RUN npm ci --ignore-scripts && npm cache clean --force
 COPY server ./server
