@@ -49,7 +49,7 @@ export function validateManifest(manifest: VideoManifest): void {
   }
 }
 
-/** Serialized writes and uploads prevent stop/finalize racing the last dataavailable event. */
+/** Serialized durable writes; bounded parallel uploads settle before finalization. */
 export class VideoUploadQueue {
   private writes: Promise<void> = Promise.resolve();
   private drainTask: Promise<void> | null = null;
@@ -123,10 +123,15 @@ export class VideoUploadQueue {
         await this.writes;
         const pending = await this.store.pending(this.manifest.id);
         if (!pending.length) break;
-        for (const chunk of pending) {
+        // Independent immutable chunks can arrive out of order. Wait for every
+        // in-flight result before retrying so a failed sibling never duplicates
+        // an upload still running in the background.
+        const results = await Promise.allSettled(pending.slice(0, 3).map(async (chunk) => {
           await this.transport.upload(this.manifest, chunk);
           await this.store.acknowledge(this.manifest.id, chunk.sequence);
-        }
+        }));
+        const failure = results.find((result) => result.status === "rejected");
+        if (failure?.status === "rejected") throw failure.reason;
       }
     })().finally(() => { this.drainTask = null; });
     return this.drainTask;

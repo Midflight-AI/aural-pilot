@@ -17,6 +17,7 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent =
  const interruptionRef=useRef(onInterrupted);
  interruptionRef.current=onInterrupted;
  useEffect(()=>{
+  if(sessionId === "__preview__") return;
   let cancelled=false;
   fetch(`/api/session/video?sessionId=${encodeURIComponent(sessionId)}`,{cache:"no-store",headers:videoRequestHeaders()}).then(async response=>{
    if(!response.ok||cancelled) return;

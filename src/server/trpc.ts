@@ -1,3 +1,4 @@
+import { candidateProcedureAllowed } from "@/lib/candidate-access";
 import { TRPCError, initTRPC } from "@trpc/server";
 import superjson from "superjson";
 import { type Context } from "./context";
@@ -22,7 +23,12 @@ const t = initTRPC.context<Context>().create({
 });
 
 export const router = t.router;
-export const publicProcedure = t.procedure;
+export const publicProcedure = t.procedure.use(async ({ ctx, path, rawInput, next }) => {
+  if (process.env.AURAL_EXTERNAL_CANDIDATES === "true" && !ctx.user && !candidateProcedureAllowed(path, rawInput, ctx.candidate)) {
+    throw new TRPCError({ code: "FORBIDDEN" });
+  }
+  return next();
+});
 export const middleware = t.middleware;
 
 const enforceUserIsAuthed = middleware(async ({ ctx, next }) => {

@@ -151,3 +151,28 @@ storage PUTs and reviewer playback do not receive it. Revoked links are denied.
 Staff testing retains authenticated organization/project authorization. The existing
 interview owner is the storage custodian; invitation access does not grant recruiter
 playback or access to another candidate's recording.
+
+
+## External candidate release update (2026-11-01 NZ)
+
+The earlier internal-only limitations above are historical. External invitation
+access uses a secure HttpOnly invitation cookie, server-side session binding for
+public tRPC and legacy candidate APIs, and signed 60-second relay initialization
+tickets. The Azure outer login gate now allows anonymous transport; the relay
+rejects connections without valid application tickets before contacting AI.
+Vercel production protection must only be opened after this guard is deployed.
+`AURAL_EXTERNAL_CANDIDATES=true` enables the invitation boundary.
+
+Production storage migrations were applied atomically as ledger entry
+`20261031203307 video_storage_manual_retention_and_processing`, containing source
+migrations 20261031082242, 20261031091602 and 20261031095724. Do not replay or rename
+those already-applied preview migrations. Verified private buckets, RLS, denied
+browser grants and no retention expiry. Recordings remain until manual deletion.
+
+A 71.228-second external synthetic-device interview survived a seven-second
+network interruption, uploaded all 15 chunks, and became ready on processor
+attempt one with partial=false. This exercised deployed capture and relay without
+staff authentication. Final draining was slow, so upload concurrency is now bounded
+at three independent immutable chunks; all in-flight requests settle before retry
+or finalization. Real hardware evidence remains the earlier 35.236-second recording
+where Josh confirmed both voices audible. These measurements are not an SLA.

@@ -36,7 +36,7 @@ test("lost upload acknowledgement retries identical bytes and finalizes only aft
   await Promise.all([first, last]);
   await assert.rejects(queue.retry(), /offline/);
   assert.equal(finalizations, 0);
-  assert.equal(f.chunks.size, 2);
+  assert.equal(f.chunks.size, 1);
   // New queue instance demonstrates reload recovery of persisted manifest + pending bytes.
   const recovered = new VideoUploadQueue(f.saved()!, f.store, transport, () => assert.fail());
   await recovered.retry();
@@ -104,4 +104,17 @@ test("final chunk appended during an upload is acknowledged before finalization"
  const finishing=queue.retry();release();
  await Promise.all([inFlight,finishing]);
  assert.deepEqual(sent,[0,1]);
+});
+
+
+test("uploads are bounded and failed batches settle before retry or finalization", async () => {
+ const f=fixture(); let active=0; let peak=0; let finalized=0; let fail=true;
+ const queue=new VideoUploadQueue(f.manifest,f.store,{
+  async upload(_m,chunk){active++;peak=Math.max(peak,active);await new Promise(resolve=>setTimeout(resolve,chunk.sequence===0?1:10));active--;if(chunk.sequence===0&&fail)throw new Error("lost connection");},
+  async finalize(){assert.equal(active,0);assert.equal(f.chunks.size,0);finalized++;},
+ },()=>assert.fail());
+ for(let i=0;i<7;i++)await queue.append(new Blob([String(i)]),(i+1)*5000);
+ await queue.seal();await assert.rejects(queue.retry(),/lost connection/);
+ assert.equal(active,0);assert.equal(peak,3);assert.equal(finalized,0);assert.equal(f.chunks.size,5);
+ fail=false;await queue.retry();assert.equal(finalized,1);assert.equal(peak,3);
 });
