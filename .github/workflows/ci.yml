@@ -35,7 +35,7 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Video recovery spike tests
-        run: node --import tsx --test tests/video-transport.test.ts tests/video-isolation.test.ts tests/video-processor-auth.test.ts
+        run: node --import tsx --test tests/video-transport.test.ts tests/video-isolation.test.ts tests/video-processor-auth.test.ts tests/relay-ticket.test.ts
 
       - name: Test
         run: npm run test:web --if-present

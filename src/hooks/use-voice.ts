@@ -666,6 +666,7 @@ export function useVoice({
         reconnectDelayMs: 1500,
         buildInitMessage: () => ({
           type: "init",
+          sessionId,
           context: {
             ...interviewContext,
             startQuestionIndex: currentQuestionIndexRef.current,
