@@ -5,9 +5,8 @@ import { clearVideoManifest,recoverVideoManifests,videoStore } from "@/lib/video
 import { VideoUploadQueue,type VideoManifest } from "@/lib/video/transport";
 import { videoRequest,videoTransport } from "@/lib/video/client";
 
-export function useVideoSpike(sessionId:string,onInterrupted:()=>void) {
+export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent = false) {
  const [enabled,setEnabled]=useState(false);
- const [consent,setConsent]=useState(false);
  const [state,setState]=useState<"idle"|"capturing"|"uploading"|"processing"|"attention">("idle");
  const [camera,setCamera]=useState<MediaStream|null>(null);
  const [recovery,setRecovery]=useState<VideoManifest[]>([]);
@@ -73,5 +72,5 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void) {
   } catch {setState("attention");throw new Error("Recording still needs recovery. Keep this browser data and retry.");}
  },[sessionId]);
  useEffect(()=>()=>{captureRef.current?.interrupt();if(!captureRef.current) preparedRef.current?.camera.getTracks().forEach(track=>track.stop());},[]);
- return {enabled,consent,setConsent,state,camera,recovery,prepare,start,finish,retry,active:()=>!!captureRef.current};
+ return {enabled,consent,state,camera,recovery,prepare,start,finish,retry,active:()=>!!captureRef.current};
 }

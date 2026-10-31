@@ -54,6 +54,7 @@ export default function SlugSessionPage() {
   const [completionReason, setCompletionReason] = useState<
     SessionEndReason | undefined
   >();
+  const [recordWebcam, setRecordWebcam] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(isPreview);
   const [previewTourDone, setPreviewTourDone] = useState(
     Boolean(previewQuestionId) || isReopened,
@@ -98,6 +99,7 @@ export default function SlugSessionPage() {
   if (!onboardingDone) {
     return (
       <IntervieweeOnboarding
+        sessionId={sessionId!}
         interviewTitle={interview.data.title}
         interviewDescription={interview.data.description}
         questionCount={interview.data.questions.length}
@@ -109,7 +111,7 @@ export default function SlugSessionPage() {
         chatEnabled={!!interview.data.chatEnabled}
         aiName={interview.data.aiName}
         questionTypes={interview.data.questions.map((q: any) => q.type as string)}
-        onComplete={() => setOnboardingDone(true)}
+        onComplete={consent => { setRecordWebcam(consent); setOnboardingDone(true); }}
       />
     );
   }
@@ -217,6 +219,7 @@ export default function SlugSessionPage() {
           initialDrawings={resume.drawings.length ? resume.drawings : undefined}
           chatEnabled={!!interview.data.chatEnabled}
           onComplete={handleComplete}
+          recordWebcam={recordWebcam}
           videoMode={isPreview ? false : !!interview.data.videoEnabled}
         />
       </>

@@ -392,6 +392,7 @@ interface VoiceInterfaceProps {
   chatEnabled?: boolean;
   onComplete?: (reason?: SessionEndReasonInput) => void;
   videoMode?: boolean;
+  recordWebcam?: boolean;
   /** Render in static preview mode — shows full layout without connecting */
   preview?: boolean;
 }
@@ -413,6 +414,7 @@ export function VoiceInterface({
   chatEnabled = false,
   onComplete,
   videoMode = false,
+  recordWebcam = false,
   preview = false,
 }: VoiceInterfaceProps) {
   useChunkLoadRecovery();
@@ -652,7 +654,7 @@ export function VoiceInterface({
     window.addEventListener("pointerup", onUp);
   }, []);
 
-  const videoSpike = useVideoSpike(sessionId, () => { recording.cancelTts(); void voice.disconnect(); handleEndInterviewRef.current(); });
+  const videoSpike = useVideoSpike(sessionId, () => { recording.cancelTts(); void voice.disconnect(); handleEndInterviewRef.current(); }, recordWebcam);
   const [videoRecoveryNeeded, setVideoRecoveryNeeded] = useState(false);
 
   // ── Audio recording with optional visual capture ──────────────────────────────────
@@ -2145,12 +2147,6 @@ export function VoiceInterface({
                 )}
               </div>
 
-              {videoSpike.enabled && !voice.isConnected && !preview && !locallyCompleted && (
-                <label className="flex max-w-md items-start gap-2 text-sm">
-                  <input type="checkbox" checked={videoSpike.consent} onChange={e => videoSpike.setConsent(e.target.checked)} disabled={isStartingInterview} />
-                  Record my webcam and both voices for this internal preview. Authorized recruiters can review it; recordings remain accessible until manually deleted. Closing this tab can lose unsaved video.
-                </label>
-              )}
               {videoSpike.enabled && (videoRecoveryNeeded || (videoSpike.recovery.length > 0 && !videoSpike.active() && !isStartingInterview)) && (
                 <div role="status" className="space-y-2">
                   <p>Video needs recovery in this browser. Audio, transcript and report are kept separately.</p>
@@ -2161,7 +2157,7 @@ export function VoiceInterface({
               {!voice.isConnected && !preview && !locallyCompleted && (
                 <Button
                   size="lg"
-                  disabled={isStartingInterview}
+                  disabled={isStartingInterview || (recordWebcam && !videoSpike.enabled)}
                   onClick={async () => {
                     setError("");
                     setIsStartingInterview(true);

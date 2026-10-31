@@ -159,16 +159,20 @@ async function waitForCondition(
 }
 
 before(async () => {
-  const port = await getFreePort();
-  baseUrl = `http://127.0.0.1:${port}`;
-  serverProcess = startAppServer(port);
+  if (process.env.FUNCTIONAL_BASE_URL) {
+    baseUrl = process.env.FUNCTIONAL_BASE_URL;
+  } else {
+    const port = await getFreePort();
+    baseUrl = `http://127.0.0.1:${port}`;
+    serverProcess = startAppServer(port);
+  }
   await waitForHttp(`${baseUrl}/login`);
   browser = await chromium.launch({ headless: true, ...(process.env.FUNCTIONAL_BROWSER_CHANNEL ? { channel: process.env.FUNCTIONAL_BROWSER_CHANNEL } : {}) });
 });
 
 after(async () => {
   await browser?.close();
-  await stopProcess(serverProcess);
+  if (serverProcess) await stopProcess(serverProcess);
 });
 
 test("the arbitrary recording URL proxy is not exposed", async () => {
@@ -676,7 +680,7 @@ test("video consent with camera denial never connects the interview relay", asyn
   const context = await browser.newContext({ locale: "en-US" });
   const page = await context.newPage();
   await page.route("**/api/session/video?*", route => route.fulfill({ status: 200, contentType: "application/json", body: '{"enabled":true}' }));
-  await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=english-failover`);
+  await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=english-failover&recordWebcam=1`);
   await waitForCondition(async () => (await page.getByTestId("harness-ready").textContent()) === "true");
   await page.evaluate(() => {
     const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
@@ -685,7 +689,7 @@ test("video consent with camera denial never connects the interview relay", asyn
       return original(constraints);
     };
   });
-  await page.getByRole("checkbox", { name: /Record my webcam/ }).check();
+  assert.equal(await page.getByRole("checkbox", { name: /Record my webcam/ }).count(), 0);
   await page.getByRole("button", { name: "Start Voice Interview" }).click();
   await waitForText(page, "Camera denied for test");
   assert.deepEqual(await readRelayConnections(page), []);
@@ -710,7 +714,7 @@ test("video upload failure keeps recovery visible and preserves audio before par
   await page.route("**/api/session/upload", route => route.fulfill({ status: 200, contentType: "application/json", body: '{"url":"https://media.example.invalid/audio.webm"}' }));
   await page.route("**/api/trpc/session.saveRecording", async route => { audioSaved = true; await route.fulfill({ status: 200, contentType: "application/json", body: "{}" }); });
   await page.route("**/api/voice/save", route => route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true}' }));
-  await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=farewell-complete`);
+  await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=farewell-complete&recordWebcam=1`);
   await waitForCondition(async () => (await page.getByTestId("harness-ready").textContent()) === "true");
   await page.evaluate(() => {
     const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
@@ -726,7 +730,7 @@ test("video upload failure keeps recovery visible and preserves audio before par
       return original(constraints);
     };
   });
-  await page.getByRole("checkbox", { name: /Record my webcam/ }).check();
+  assert.equal(await page.getByRole("checkbox", { name: /Record my webcam/ }).count(), 0);
   await page.getByRole("button", { name: "Start Voice Interview" }).click();
   await page.locator('[data-tour="voice-mic"] button').click();
   await page.locator('[data-tour="voice-mic"]').getByText("Mute", { exact: true }).waitFor();
@@ -747,4 +751,36 @@ test("video upload failure keeps recovery visible and preserves audio before par
   }
   assert.equal(finalized, true);
   await context.close();
+});
+
+
+test("camera checklist previews before consent, releases camera and supports denial retry", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/functional-tests/voice?scenario=camera-checklist`);
+    await waitForCondition(async () => (await page.getByTestId("harness-ready").textContent()) === "true");
+    await page.evaluate(() => {
+      let denied = true;
+      navigator.mediaDevices.getUserMedia = async () => {
+        if (denied) { denied = false; throw new DOMException("Denied", "NotAllowedError"); }
+        const canvas = document.createElement("canvas");
+        canvas.width = 640; canvas.height = 480;
+        return canvas.captureStream(1);
+      };
+    });
+    await page.getByRole("button", { name: "Test Camera", exact: true }).click();
+    await page.getByRole("alert").filter({ hasText: "Unable to access camera" }).waitFor();
+    assert.equal(await page.getByTestId("camera-ready").textContent(), "false");
+    assert.equal(await page.getByRole("button", { name: "Next", exact: true }).isEnabled(), true);
+    await page.getByRole("button", { name: "Test Camera", exact: true }).click();
+    await page.getByLabel("Camera preview").waitFor();
+    assert.equal(await page.getByTestId("camera-ready").textContent(), "false");
+    assert.equal(await page.getByRole("button", { name: "Next", exact: true }).isDisabled(), true);
+    const track = await page.getByLabel("Camera preview").evaluateHandle(el => (el as HTMLVideoElement).srcObject instanceof MediaStream ? ((el as HTMLVideoElement).srcObject as MediaStream).getVideoTracks()[0] : null);
+    await page.getByRole("button", { name: "Use Camera & Record" }).click();
+    assert.equal(await page.getByTestId("camera-ready").textContent(), "true");
+    assert.equal(await track.evaluate(value => value?.readyState), "ended");
+    await page.getByRole("button", { name: "Continue without video recording" }).click();
+    assert.equal(await page.getByTestId("camera-ready").textContent(), "false");
+  } finally { await page.close(); }
 });
