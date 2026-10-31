@@ -95,12 +95,58 @@ and the separately owned video spike 20261031082242. Original Aural
 knbbkrfatygusjqjcjcy is reserved for production and is out of scope.
 Only fictional fixtures are used for webhook testing.
 
-## Verification boundary
+## Preview verification — 31 October 2026
 
-Focused local signature/rotation/schema/stream-size, durable receiver,
-lease/revision worker, and delivery retry/egress policy tests pass.
-The expanded Ramp inbox suite passed 25 rollback-only database assertions. Migration replay, full type/lint/test checks belong to remote
-CI. Live transport, outage/restart, inbox API timeout, missed-event repair,
-Sentry failure/recovery and role-based preview readback are not yet proven.
-Video-ready/deletion acceptance is blocked on the separate video lifecycle and
-must not be represented as implemented by this core webhook checkpoint.
+Runtime tests used Ramp commit `6bec8f6d5` and Aural commit `0252fab`, both with
+successful full GitHub CI and Vercel preview builds. No webhook PR was merged.
+Both databases were isolated previews; all records were fictional. Calls used
+server API/worker credentials, not a logged-in candidate or admin browser role.
+
+| Case | Observed result |
+| --- | --- |
+| Signed source event | Aural delivery received 202; Ramp persisted the inbox row. |
+| Event before mapping | Retained `MAPPING_PENDING`; mapped existing attempt later reconciled to revision 3 before inbox became processed. |
+| Completion before report | Revision 4 remained processing; no false ready result. |
+| Delayed report | Summary, transcript and a synthetic one-second WAV's metadata reached ready at revision 5. |
+| Source API unavailable | Disabled only the fixture API key; worker failed, kept required revision 5 and canonical revision 4, and scheduled retry. Restoring key recovered to ready with failures reset. |
+| Duplicate/reverse order | Original events replayed newest-first returned 202 without extra rows. Same ID with altered body returned 409. |
+| Invalid requests | Tampered bytes, expired timestamp and unknown key returned 401; wrong project 403; unknown major version and content-bearing extra field 400. |
+| Video capability | Signed recording/video event was quarantined, never acknowledged as canonical evidence. |
+| Inbox persistence outage | A bounded trigger rejected only one synthetic event. Receiver returned 503 and stored no inbox row; producer remained pending with retry time. After trigger removal, next invocation delivered the original event (attempt 2) and ordinary sync saved revision 6. |
+| Missed event | Disabled fixture subscription for a later report, so no delivery/inbox existed. Advancing the fixture's last-sync age exercised rotating polling, which saved revision 7. |
+| Dead letter/redrive | With one-event persistence fault restored, accelerated only its retry counter to 7. Attempt 8 parked it dead with `RETRIES_EXHAUSTED`; after removing fault, redrive preserved event identity and recovered to revision 8/processed. |
+
+Retry due-times and the 24-hour polling age were advanced on synthetic rows;
+this was not a multi-day elapsed-time soak test. The targeted local suites also
+cover overlapping signing-key validity, raw-body limits, stale leases and
+revision ordering. The Ramp database suite passed 25 rollback assertions.
+
+Sentry UI recorded the deliberate source failure as
+[AMPED-TALENT-VAULT-FM](https://midflight-ai.sentry.io/issues/157584317/), tagged
+with preview deployment, release, safe error code and synthetic attempt ID.
+No transcript, report, credential, request URL or user identity appeared in the
+inspected failure event. API read access returned 403, so UI was used to inspect
+failure evidence. The browser interview page required a separate Ramp login;
+admin visual readback and actual audio playback were not verified in this run.
+
+At 09:16 UTC, the synthetic attempt was cancelled with no next sync or lease,
+and its Aural subscription disabled. Content-free delivery/inbox records and
+fictional evidence remain for inspection. Both temporary fault triggers/functions
+were removed; no fixture inbox work remains pending. The setup owner restored
+the original preview scheduler at 09:16:50 UTC with its original command and
+schedule, and removed the fallback restoration job.
+
+Vercel CLI initially auto-created an automation bypass while calling `curl`.
+It was immediately revoked (zero Aural automation bypasses remained). Subsequent
+tests used short-lived project identity tokens from the authenticated preview
+environment. No public share link was created.
+
+## Remaining release boundaries
+
+This is preview-only. No production webhook settings, schema or release were
+applied. The matching release bot has renamed its unapplied production migration
+files; this preview keeps the original filenames matching its applied ledger.
+Resolve that exact-body mapping and prerequisite order before future admission;
+do not blindly merge renamed prerequisites ahead of the existing inbox file.
+Video-ready/deletion lifecycle and recording recovery remain owned by the
+separate video spike and are not implemented by this core webhook change.
