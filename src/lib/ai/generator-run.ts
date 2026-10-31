@@ -15,7 +15,7 @@ function pushUnique(chain: string[], model: string) {
 export function getGeneratorModelChain(): string[] {
   const chain: string[] = [];
   if (process.env.OPENAI_API_KEY?.trim()) {
-    pushUnique(chain, "gpt-4o-mini");
+    pushUnique(chain, process.env.OPENAI_GENERATOR_MODEL?.trim() || "gpt-4o-mini");
   }
   if (process.env.GEMINI_API_KEY?.trim()) {
     pushUnique(chain, "gemini-3.1-flash-lite");

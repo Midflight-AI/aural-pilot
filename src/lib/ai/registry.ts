@@ -54,7 +54,7 @@ export const REPORT_MODEL = process.env.OPENAI_API_KEY
  * Model used for interview question generation and refinement.
  */
 export const GENERATOR_MODEL = process.env.OPENAI_API_KEY
-  ? "gpt-4o-mini"
+  ? (process.env.OPENAI_GENERATOR_MODEL?.trim() || "gpt-4o-mini")
   : process.env.GEMINI_API_KEY
     ? "gemini-3.1-flash-lite"
     : process.env.KIMI_API_KEY
