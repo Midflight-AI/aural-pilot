@@ -12,6 +12,7 @@ type FunctionalRelayEvent =
 type FunctionalScenario = Record<string, { events: FunctionalRelayEvent[] }>;
 
 type FunctionalScenarioId =
+  | "connection-failure"
   | "default"
   | "english-failover"
   | "chinese-failover"
@@ -42,6 +43,10 @@ declare global {
 }
 
 const functionalScenarios: Record<FunctionalScenarioId, FunctionalScenario> = {
+  "connection-failure": {
+    "/ws/voice": { events: [{ type: "close", delay: 30 }] },
+    "/ws/openai-voice": { events: [{ type: "close", delay: 30 }] },
+  },
   default: {
     "/ws/voice": {
       events: [{ type: "ready", delay: 30 }],

@@ -271,7 +271,7 @@ test("English interviews try the voice relay first and fail over to OpenAI", asy
     5_000,
     "Expected functional voice harness mocks to be ready",
   );
-  await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.getByRole("button", { name: "Start Interview" }).click();
 
   await delay(3_500);
 
@@ -296,7 +296,7 @@ test("Chinese interviews also try the voice relay first and fail over to OpenAI"
     5_000,
     "Expected functional voice harness mocks to be ready",
   );
-  await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.getByRole("button", { name: "Start Interview" }).click();
 
   await delay(3_500);
 
@@ -322,7 +322,7 @@ test("voice interview shows Thinking after user speech finalizes", async () => {
     5_000,
     "Expected functional voice harness mocks to be ready",
   );
-  await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.getByRole("button", { name: "Start Interview" }).click();
 
   await waitForText(page, "Thinking...", 8_000);
   const bodyText = (await page.locator("body").textContent()) ?? "";
@@ -348,7 +348,7 @@ test("voice interview keeps Thinking visible until the agent response returns", 
     5_000,
     "Expected functional voice harness mocks to be ready",
   );
-  await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.getByRole("button", { name: "Start Interview" }).click();
 
   await waitForText(page, "Thinking...", 8_000);
   await delay(500);
@@ -386,7 +386,7 @@ test("Qwen snapshots replace phantom drafts in the actual voice UI and allow emp
   await page.route("**/api/session/upload", (route) => route.fulfill({ status: 200, contentType: "application/json", body: '{"url":"","path":""}' }));
   await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=qwen-transcript-revision`);
   await waitForCondition(async () => (await page.getByTestId("harness-ready").textContent()) === "true", 5_000);
-  await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.getByRole("button", { name: "Start Interview" }).click();
   const status = page.getByTestId("voice-status-scroll");
   await waitForCondition(async () => ((await status.textContent()) ?? "").includes("Thank you Hello we can hello"), 8_000);
   await waitForCondition(async () => ((await status.textContent()) ?? "").includes("Hello. Can you hear me"), 3_000);
@@ -408,7 +408,7 @@ test("live captions stay visible while drafts pulse across pending and resumed s
   await page.route("**/api/session/upload", (route) => route.fulfill({ status: 200, contentType: "application/json", body: '{"url":"","path":""}' }));
   await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=qwen-caption-stability`);
   await waitForCondition(async () => (await page.getByTestId("harness-ready").textContent()) === "true", 5_000);
-  await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.getByRole("button", { name: "Start Interview" }).click();
   await page.getByTestId("live-user-transcript").waitFor({ state: "visible", timeout: 10_000 });
   const caption = await page.getByTestId("voice-user-caption").elementHandle();
   const live = await page.getByTestId("live-user-transcript").elementHandle();
@@ -436,7 +436,7 @@ for (const reducedMotion of ["no-preference", "reduce"] as const) {
     await page.route("**/api/session/upload", (route) => route.fulfill({ status: 200, contentType: "application/json", body: '{"url":"","path":""}' }));
     await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=listening-feedback`);
     await waitForCondition(async () => (await page.getByTestId("harness-ready").textContent()) === "true", 5_000);
-    await page.getByRole("button", { name: "Start Voice Interview" }).click();
+    await page.getByRole("button", { name: "Start Interview" }).click();
     await page.locator('[data-tour="voice-mic"] button').click();
     const listening = page.getByTestId("voice-listening-feedback");
     await listening.waitFor({ state: "visible", timeout: 10_000 });
@@ -474,7 +474,7 @@ test("discarded ASR finals clear the voice processing state", async () => {
     5_000,
     "Expected functional voice harness mocks to be ready",
   );
-  await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.getByRole("button", { name: "Start Interview" }).click();
 
   const voiceStatus = page.getByTestId("voice-status-scroll");
   await waitForCondition(
@@ -514,7 +514,7 @@ test("long live transcripts scroll inside the voice panel without moving the con
     5_000,
     "Expected functional voice harness mocks to be ready",
   );
-  await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.getByRole("button", { name: "Start Interview" }).click();
 
   const voiceStatusScroll = page.getByTestId("voice-status-scroll");
   await waitForCondition(
@@ -591,7 +591,7 @@ test("voice completion shows the farewell, waits for final save, and only then n
     5_000,
     "Expected functional voice harness mocks to be ready",
   );
-  await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.getByRole("button", { name: "Start Interview" }).click();
   await page.locator('[data-tour="voice-mic"] button').click();
   await page.locator('[data-tour="voice-mic"]').getByText("Mute", { exact: true }).waitFor();
 
@@ -690,7 +690,7 @@ test("video consent with camera denial never connects the interview relay", asyn
     };
   });
   assert.equal(await page.getByRole("checkbox", { name: /Record my webcam/ }).count(), 0);
-  await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.getByRole("button", { name: "Start Interview" }).click();
   await waitForText(page, "Camera denied for test");
   assert.deepEqual(await readRelayConnections(page), []);
   assert.equal(await page.getByTestId("parent-complete").textContent(), "false");
@@ -731,7 +731,7 @@ test("video upload failure keeps recovery visible and preserves audio before par
     };
   });
   assert.equal(await page.getByRole("checkbox", { name: /Record my webcam/ }).count(), 0);
-  await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.getByRole("button", { name: "Start Interview" }).click();
   await page.locator('[data-tour="voice-mic"] button').click();
   await page.locator('[data-tour="voice-mic"]').getByText("Mute", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Retry video upload" }).waitFor({ timeout: 15000 });
@@ -782,5 +782,43 @@ test("camera checklist previews before consent, releases camera and supports den
     assert.equal(await track.evaluate(value => value?.readyState), "ended");
     await page.getByRole("button", { name: "Continue without video recording" }).click();
     assert.equal(await page.getByTestId("camera-ready").textContent(), "false");
+  } finally { await page.close(); }
+});
+
+test("failed video connection releases camera without recording and can retry", async () => {
+  const page = await browser.newPage();
+  let created = 0;
+  const recordingIds = new Set<string>();
+  try {
+    await page.route("**/api/session/video?*", route => route.fulfill({ status: 200, contentType: "application/json", body: '{"enabled":true}' }));
+    await page.route("**/api/session/video", route => { created++; recordingIds.add(route.request().postDataJSON().id); return route.fulfill({ status: 200, contentType: "application/json", body: '{}' }); });
+    await page.goto(`${baseUrl}/functional-tests/voice?scenario=connection-failure&recordWebcam=1`);
+    await waitForCondition(async () => (await page.getByTestId("harness-ready").textContent()) === "true");
+    const installCamera = () => page.evaluate(() => {
+      const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getUserMedia = async constraints => {
+        if (!constraints?.video) return original(constraints);
+        const canvas = document.createElement("canvas"); canvas.width = 640; canvas.height = 480;
+        const stream = canvas.captureStream(1);
+        stream.getVideoTracks()[0].addEventListener("ended", () => {});
+        return stream;
+      };
+    });
+    await installCamera();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt === 2) {
+        await page.reload();
+        await waitForCondition(async () => (await page.getByTestId("harness-ready").textContent()) === "true");
+        await installCamera();
+      }
+      await page.getByRole("button", { name: "Start Interview", exact: true }).click();
+      await page.getByText("The interview could not connect. Your camera is off. Please try again.", { exact: true }).waitFor();
+      assert.equal(await page.getByText("REC", { exact: true }).count(), 0);
+      assert.equal(await page.getByText("Webcam recording", { exact: true }).count(), 0);
+      assert.equal(await page.getByRole("button", { name: "Retry video upload" }).count(), 0);
+      assert.equal(await page.getByRole("button", { name: "Start Interview", exact: true }).isEnabled(), true);
+    }
+    assert.equal(created, 2, "Reload reauthorizes the empty attempt");
+    assert.equal(recordingIds.size, 1, "Retries and reload retain the prepared recording identity");
   } finally { await page.close(); }
 });

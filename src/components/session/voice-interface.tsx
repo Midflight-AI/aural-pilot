@@ -717,7 +717,7 @@ export function VoiceInterface({
 
   const handleError = useCallback((err: string) => {
     setError(err);
-    setTimeout(() => setError(""), 5000);
+
   }, []);
 
   const exportWhiteboardPngForRelay = useCallback(async () => {
@@ -766,6 +766,16 @@ export function VoiceInterface({
     const micStream = voice.mediaStreamRef.current;
     recording.start(micStream ?? undefined);
   }, [voice.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A terminal relay failure must not leave capture running on a disconnected screen.
+  const wasConnectedRef = useRef(false);
+  useEffect(() => {
+    if (voice.isConnected) wasConnectedRef.current = true;
+    else if (wasConnectedRef.current && !locallyCompleted) {
+      wasConnectedRef.current = false;
+      handleEndInterviewRef.current();
+    }
+  }, [voice.isConnected, locallyCompleted]);
 
   // Attach mic stream to recording when it becomes available
   useEffect(() => {
@@ -1676,7 +1686,7 @@ export function VoiceInterface({
           <div className="mr-2 min-w-0 flex-1">
             <h1 className="truncate text-sm font-semibold md:text-base">{interviewTitle}</h1>
             <p className="hidden text-xs text-muted-foreground md:block">
-              Voice Interview with {aiName}
+              Interview with {aiName}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -2147,7 +2157,7 @@ export function VoiceInterface({
                 )}
               </div>
 
-              {videoSpike.enabled && (videoRecoveryNeeded || (videoSpike.recovery.length > 0 && !videoSpike.active() && !isStartingInterview)) && (
+              {videoSpike.enabled && (videoRecoveryNeeded || (videoSpike.recovery.some(manifest => manifest.chunks.length > 0 || manifest.sealed) && !videoSpike.prepared() && !videoSpike.active() && !isStartingInterview)) && (
                 <div role="status" className="space-y-2">
                   <p>Video needs recovery in this browser. Audio, transcript and report are kept separately.</p>
                   <Button onClick={async () => { try { await videoSpike.retry(); setVideoRecoveryNeeded(false); if (locallyCompleted) onComplete?.(localCompletionReason); } catch (error) { setError(error instanceof Error ? error.message : "Recovery failed."); } }}>Retry video upload</Button>
@@ -2162,16 +2172,22 @@ export function VoiceInterface({
                     setError("");
                     setIsStartingInterview(true);
                     try {
-                      if (videoSpike.enabled && videoSpike.consent) {
+                      const withVideo = videoSpike.enabled && videoSpike.consent;
+                      if (withVideo) {
                         await videoSpike.prepare();
+                        // The button owns recording startup after the relay is ready.
                         recordingStartedRef.current = true;
+                      }
+                      if (!await voice.connect()) throw new Error("The interview could not connect. Your camera is off. Please try again.");
+                      if (withVideo) {
                         await recording.start();
                         const mixed = recording.getMixedStream();
                         if (!mixed) throw new Error("Audio recorder unavailable.");
                         await videoSpike.start(mixed);
                       }
-                      await voice.connect();
                     } catch (error) {
+                      videoSpike.releasePreparedCamera();
+                      recordingStartedRef.current = false;
                       setError(error instanceof Error ? error.message : "Unable to start recording.");
                       setIsStartingInterview(false);
                     }
@@ -2183,7 +2199,7 @@ export function VoiceInterface({
                   ) : (
                     <Mic className="h-5 w-5" />
                   )}
-                  {isStartingInterview ? "Connecting..." : "Start Voice Interview"}
+                  {isStartingInterview ? "Connecting..." : "Start Interview"}
                 </Button>
               )}
 

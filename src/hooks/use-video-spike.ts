@@ -28,12 +28,16 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent =
  const prepare=useCallback(async()=>{
   if(preparedRef.current?.camera.getVideoTracks()[0]?.readyState === "live") return;
   if(!enabled||!consent) return;
-  if(recovery.length) throw new Error("Recover the existing recording before starting another interview.");
+  const emptyAttempt=recovery.length===1 && !recovery[0].sealed && recovery[0].chunks.length===0 ? recovery[0] : null;
+  if(recovery.length && !emptyAttempt && !preparedRef.current) throw new Error("Recover the existing recording before starting another interview.");
   if(!canCaptureVideo()) throw new Error("This video preview needs desktop Chrome or Edge with local storage available.");
   let cam:MediaStream|null=null;
   try {
    cam=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:24,max:30}},audio:false});
-   const manifest:VideoManifest={id:crypto.randomUUID(),sessionId,generation:1,mimeType:VIDEO_MIME,chunks:[],sealed:false,partial:false};
+   if(preparedRef.current) {
+    preparedRef.current={camera:cam,queue:preparedRef.current.queue};setCamera(cam);return;
+   }
+   const manifest:VideoManifest=emptyAttempt ?? {id:crypto.randomUUID(),sessionId,generation:1,mimeType:VIDEO_MIME,chunks:[],sealed:false,partial:false};
    // Persist the stable ID before a network write can have an ambiguous outcome.
    await videoStore.saveManifest(manifest);
    setRecovery([manifest]);
@@ -42,7 +46,7 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent =
    queueRef.current=queue;
    preparedRef.current={camera:cam,queue};setCamera(cam);
   } catch(error) {cam?.getTracks().forEach(track=>track.stop());setState("attention");throw error;}
- },[enabled,consent,recovery.length,sessionId]);
+ },[enabled,consent,recovery,sessionId]);
  const start=useCallback(async(mixed:MediaStream)=>{
   const prepared=preparedRef.current;
   if(!prepared) throw new Error("Camera preparation is required.");
@@ -72,5 +76,9 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent =
   } catch {setState("attention");throw new Error("Recording still needs recovery. Keep this browser data and retry.");}
  },[sessionId]);
  useEffect(()=>()=>{captureRef.current?.interrupt();if(!captureRef.current) preparedRef.current?.camera.getTracks().forEach(track=>track.stop());},[]);
- return {enabled,consent,state,camera,recovery,prepare,start,finish,retry,active:()=>!!captureRef.current};
+ const releasePreparedCamera=useCallback(()=>{
+  if(captureRef.current) return;
+  preparedRef.current?.camera.getTracks().forEach(track=>track.stop());setCamera(null);
+ },[]);
+ return {prepared:()=>!!preparedRef.current,releasePreparedCamera,enabled,consent,state,camera,recovery,prepare,start,finish,retry,active:()=>!!captureRef.current};
 }

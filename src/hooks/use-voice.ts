@@ -626,7 +626,8 @@ export function useVoice({
   const connect = useCallback(async () => {
     try {
       // Request microphone permission
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      permissionStream.getTracks().forEach(track => track.stop());
 
       // Create AudioContext for playback
       if (!audioContextRef.current) {
@@ -707,10 +708,12 @@ export function useVoice({
 
       relayConnectorRef.current = connector;
       await connector.connect();
+      return true;
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : "Voice connection failed";
       onError?.(msg);
+      return false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onError, playAudio, interviewContext]);
