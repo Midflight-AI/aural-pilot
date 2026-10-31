@@ -1,6 +1,7 @@
 "use client";
 import { videoRequestHeaders } from "@/lib/video/client";
 
+import { InterviewInfo } from "./interview-info";
 import { PreparingScreen } from "@/components/session/preparing-screen";
 import {
     AlertDialog,
@@ -15,7 +16,6 @@ import {
 import { AuralLogo } from "@/components/ui/aural-logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import type { InterviewContext } from "@/hooks/use-voice";
 import { DEFAULT_FOLLOW_UP_DEPTH } from "@/lib/follow-up-depth";
 import { getMicTestMessage } from "@/lib/i18n";
@@ -1430,125 +1430,18 @@ export function IntervieweeOnboarding({
   );
 
   if (step === "info") {
-    return (
-      <div className="flex min-h-screen flex-col bg-muted/30">
-        {header}
-        <StepIndicator current="info" />
-        <div className="mx-auto w-full max-w-2xl flex-1 px-4 pb-8 sm:px-6">
-          <Card>
-            <CardContent className="p-4 sm:p-6">
-              <h2 className="text-lg font-semibold">{interviewTitle}</h2>
-
-              <div className="mt-4 flex gap-6 text-sm">
-                <div>
-                  <span className="font-medium">Description</span>
-                  <p className="mt-1 text-muted-foreground">
-                    {interviewDescription || "No additional description."}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-2 text-sm text-muted-foreground">
-                {questionCount} questions &middot;{" "}
-                {timeLimitMinutes
-                  ? `${timeLimitMinutes} min`
-                  : "No time limit"}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="mt-4">
-            <CardContent className="space-y-3 p-4 sm:p-6">
-              <h3 className="font-semibold">Integrity Notices</h3>
-              {antiCheatingEnabled ? (
-                <>
-                  <div className="rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-                    To ensure fairness, the following integrity measures will be
-                    actively enforced throughout this session.
-                  </div>
-                  <ol className="list-inside list-decimal space-y-2 text-sm text-muted-foreground">
-                    <li>
-                      To ensure that the interview runs properly, please use the
-                      latest version of Chrome.
-                    </li>
-                    <li>
-                      After completing your answers, please make sure that you have
-                      submitted them to all questions. Otherwise it will affect your
-                      results.
-                    </li>
-                    <li>
-                      <span className="font-medium text-foreground">Tab switching and focus tracking:</span>{" "}
-                      Leaving the interview page or switching to another window will
-                      be automatically detected and recorded. If you leave more
-                      than{" "}
-                      <span className="font-medium text-primary">3</span> times,
-                      your session will be flagged for review.
-                    </li>
-                    <li>
-                      <span className="font-medium text-foreground">External paste blocked:</span>{" "}
-                      Pasting content from outside the interview page is not
-                      allowed. You can copy and paste freely within the page.
-                    </li>
-                    <li>
-                      <span className="font-medium text-foreground">Multiple screen detection:</span>{" "}
-                      The system will detect if you have multiple monitors connected.
-                      Please unplug or turn off additional screens before starting.
-                    </li>
-                    <li>
-                      This interview requires a camera to collect your registration
-                      photo and capture your behavior. All photos are privacy
-                      protected.
-                    </li>
-                    <li>
-                      The interview will screen capture throughout. Screen capture
-                      requires authorization.
-                    </li>
-                  </ol>
-                </>
-              ) : (
-                <ol className="list-inside list-decimal space-y-2 text-sm text-muted-foreground">
-                  <li>
-                    To ensure that the interview runs properly, please use the
-                    latest version of Chrome.
-                  </li>
-                  <li>
-                    After completing your answers, please make sure that you have
-                    submitted them to all questions. Otherwise it will affect your
-                    results.
-                  </li>
-                  <li>
-                    Before the interview starts, please shut down any software or
-                    web page with ads, message pop-ups. Please do not leave the
-                    interview page during the whole process.
-                  </li>
-                  {needsVisualChecks && <>
-                    <li>This interview uses camera snapshots and screen capture, which require authorization.</li>
-                  </>}
-                  {voiceEnabled && <li>This interview records audio for transcription and review. Microphone access is required.</li>}
-                </ol>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="mt-6 flex flex-col items-center gap-4">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={agreed}
-                onCheckedChange={(v) => setAgreed(v === true)}
-              />
-              I agree to the above notice and interview guidelines
-            </label>
-            <Button
-              disabled={!agreed}
-              onClick={() => setStep("checklist")}
-              className="w-40"
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
+    return <InterviewInfo
+      interviewTitle={interviewTitle}
+      interviewDescription={interviewDescription}
+      questionCount={questionCount}
+      timeLimitMinutes={timeLimitMinutes}
+      antiCheatingEnabled={antiCheatingEnabled}
+      needsVisualChecks={needsVisualChecks}
+      voiceEnabled={voiceEnabled}
+      agreed={agreed}
+      onAgreedChange={setAgreed}
+      onNext={() => setStep("checklist")}
+    />;
   }
 
   if (starting) {
