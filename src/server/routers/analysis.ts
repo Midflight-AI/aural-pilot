@@ -1,3 +1,4 @@
+import { recordedSessionDuration } from "@/lib/recording-duration";
 import { extractStoragePath, mergeScreenshotEntries, resolveRecoveredPlaybackRecording, screenshotEntryFromStorageObject, type SessionRecordingEntry, type SessionScreenshotEntry } from "@/lib/session-media";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { TRPCError } from "@trpc/server";
@@ -143,7 +144,7 @@ export const analysisRouter = router({
         themes: session.themes,
         sentiment: session.sentiment,
         messages: session.messages,
-        totalDurationSeconds: session.totalDurationSeconds,
+        totalDurationSeconds: recordedSessionDuration(session) ?? session.totalDurationSeconds,
         audioRecordingUrl,
         audioRecordings,
         audioDuration: (session as Record<string, unknown>).audioDuration as number | null,
