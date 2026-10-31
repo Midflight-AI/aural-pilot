@@ -41,6 +41,7 @@ import {
     useChunkLoadRecovery,
     useSessionToolChunkPrefetch,
 } from "@/hooks/use-chunk-load-recovery";
+import { useVideoSpike } from "@/hooks/use-video-spike";
 import { useInterviewRecording } from "@/hooks/use-interview-recording";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { useVoice, type InterviewContext } from "@/hooks/use-voice";
@@ -651,11 +652,14 @@ export function VoiceInterface({
     window.addEventListener("pointerup", onUp);
   }, []);
 
+  const videoSpike = useVideoSpike(sessionId, () => { recording.cancelTts(); void voice.disconnect(); handleEndInterviewRef.current(); });
+  const [videoRecoveryNeeded, setVideoRecoveryNeeded] = useState(false);
+
   // ── Audio recording with optional visual capture ──────────────────────────────────
   const recording = useInterviewRecording({
     sessionId,
     enabled: true,
-    captureVisuals: videoMode,
+    captureVisuals: videoMode && !videoSpike.consent,
   });
 
   const cameraPipRef = useRef<HTMLVideoElement>(null);
@@ -1267,12 +1271,16 @@ export function VoiceInterface({
     setIsSaving(true);
 
     voice.stopListening();
+    let videoSaved = true;
 
     try {
       await Promise.allSettled([
         withTimeout(saveAllDrawings(), 5000, "save drawings"),
         withTimeout(saveAllCodeSnippets(), 5000, "save code snippets"),
       ]);
+
+      try { await videoSpike.finish(); } catch { videoSaved = false; setVideoRecoveryNeeded(true); }
+      if (!videoSaved) setIsSaving(false);
 
       try {
         if (recording.isRecording) {
@@ -1320,9 +1328,10 @@ export function VoiceInterface({
     } catch (err) {
       console.error("[voice] Failed to end interview cleanly:", err);
     } finally {
-      onComplete?.(normalizedReason);
+      if (videoSaved) onComplete?.(normalizedReason);
+      else { setVideoRecoveryNeeded(true); setIsSaving(false); }
     }
-  }, [saveAllDrawings, saveAllCodeSnippets, recording, sessionId, voice, onComplete]);
+  }, [saveAllDrawings, saveAllCodeSnippets, recording, sessionId, voice, onComplete, videoSpike]);
 
   useEffect(() => {
     handleEndInterviewRef.current = handleEndInterview;
@@ -1340,7 +1349,7 @@ export function VoiceInterface({
   useEffect(() => {
     if (!voice.timeLimitExceeded || locallyCompleted || timeLimitTriggeredRef.current) return;
     timeLimitTriggeredRef.current = true;
-    onComplete?.("ACCOUNT_SESSION_TIME_LIMIT_REACHED");
+    handleEndInterviewRef.current("ACCOUNT_SESSION_TIME_LIMIT_REACHED");
   }, [voice.timeLimitExceeded, locallyCompleted, onComplete]);
 
   // ── Scroll transcript to bottom ─────────────────────────────────
@@ -1639,6 +1648,14 @@ export function VoiceInterface({
   }, [voice.isConnected, isCodingQuestion, isWhiteboardQuestion]);
 
   // ── Render ──────────────────────────────────────────────────────
+  if (locallyCompleted && videoSpike.active()) {
+    return <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6" role="status">
+      <h1 className="text-xl font-semibold">Interview finished</h1>
+      <p>{videoRecoveryNeeded ? "Video upload is interrupted. Keep this browser data and retry." : "Saving your video. Keep this tab open."}</p>
+      {videoRecoveryNeeded && <Button onClick={async () => { try { await videoSpike.retry(); setVideoRecoveryNeeded(false); onComplete?.(localCompletionReason); } catch (error) { setError(error instanceof Error ? error.message : "Recovery failed."); } }}>Retry video upload</Button>}
+      {error && <p role="alert">{error}</p>}
+    </div>;
+  }
   return shouldShowCompletionScreen ? completionScreen : (
     <div className="relative flex h-screen flex-col overflow-hidden bg-background">
       {/* Saving overlay */}
@@ -2129,7 +2146,20 @@ export function VoiceInterface({
                 )}
               </div>
 
-              {!voice.isConnected && !preview && (
+              {videoSpike.enabled && !voice.isConnected && !preview && !locallyCompleted && (
+                <label className="flex max-w-md items-start gap-2 text-sm">
+                  <input type="checkbox" checked={videoSpike.consent} onChange={e => videoSpike.setConsent(e.target.checked)} disabled={isStartingInterview} />
+                  Record my webcam and both voices for this internal preview. Authorized recruiters can review it; playback access expires after 30 days. Closing this tab can lose unsaved video.
+                </label>
+              )}
+              {videoSpike.enabled && (videoRecoveryNeeded || (videoSpike.recovery.length > 0 && !videoSpike.active())) && (
+                <div role="status" className="space-y-2">
+                  <p>Video needs recovery in this browser. Audio, transcript and report are kept separately.</p>
+                  <Button onClick={async () => { try { await videoSpike.retry(); setVideoRecoveryNeeded(false); if (locallyCompleted) onComplete?.(localCompletionReason); } catch (error) { setError(error instanceof Error ? error.message : "Recovery failed."); } }}>Retry video upload</Button>
+                </div>
+              )}
+              {videoSpike.active() && <p role="status">{videoSpike.state === "capturing" ? "Webcam recording" : videoSpike.state === "attention" ? "Video upload interrupted — keep this tab open" : videoSpike.state === "processing" ? "Video uploaded; playback is being checked" : "Saving video…"}</p>}
+              {!voice.isConnected && !preview && !locallyCompleted && (
                 <Button
                   size="lg"
                   disabled={isStartingInterview}
@@ -2137,8 +2167,16 @@ export function VoiceInterface({
                     setError("");
                     setIsStartingInterview(true);
                     try {
+                      if (videoSpike.enabled && videoSpike.consent) {
+                        recordingStartedRef.current = true;
+                        await recording.start();
+                        const mixed = recording.getMixedStream();
+                        if (!mixed) throw new Error("Audio recorder unavailable.");
+                        await videoSpike.start(mixed);
+                      }
                       await voice.connect();
-                    } catch {
+                    } catch (error) {
+                      setError(error instanceof Error ? error.message : "Unable to start recording.");
                       setIsStartingInterview(false);
                     }
                   }}
@@ -2635,6 +2673,7 @@ export function VoiceInterface({
       )}
 
       {/* ── Camera PIP overlay (video mode) — draggable ────── */}
+      {videoSpike.camera && <video muted playsInline autoPlay aria-label="Your webcam preview" className="fixed bottom-4 right-4 w-40 rounded-lg" ref={element => { if (element && element.srcObject !== videoSpike.camera) element.srcObject = videoSpike.camera; }} />}
       {videoMode && recording.cameraStream && (
         <DraggablePip>
           <video

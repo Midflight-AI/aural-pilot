@@ -1,0 +1,70 @@
+"use client";
+import { useCallback,useEffect,useRef,useState } from "react";
+import { canCaptureVideo,WebcamCapture,VIDEO_MIME } from "@/lib/video/capture";
+import { clearVideoManifest,recoverVideoManifests,videoStore } from "@/lib/video/store";
+import { VideoUploadQueue,type VideoManifest } from "@/lib/video/transport";
+import { videoRequest,videoTransport } from "@/lib/video/client";
+
+export function useVideoSpike(sessionId:string,onInterrupted:()=>void) {
+ const [enabled,setEnabled]=useState(false);
+ const [consent,setConsent]=useState(false);
+ const [state,setState]=useState<"idle"|"capturing"|"uploading"|"processing"|"attention">("idle");
+ const [camera,setCamera]=useState<MediaStream|null>(null);
+ const [recovery,setRecovery]=useState<VideoManifest[]>([]);
+ const captureRef=useRef<WebcamCapture|null>(null);
+ const queueRef=useRef<VideoUploadQueue|null>(null);
+ const interruptionRef=useRef(onInterrupted);
+ interruptionRef.current=onInterrupted;
+ useEffect(()=>{
+  let cancelled=false;
+  fetch(`/api/session/video?sessionId=${encodeURIComponent(sessionId)}`,{cache:"no-store"}).then(async response=>{
+   if(!response.ok||cancelled) return;
+   setEnabled(true);
+   const manifests=await recoverVideoManifests(sessionId);
+   if(!cancelled) setRecovery(manifests);
+  }).catch(()=>{});
+  return()=>{cancelled=true;};
+ },[sessionId]);
+ const start=useCallback(async(mixed:MediaStream)=>{
+  if(!enabled||!consent) return;
+  if(recovery.length) throw new Error("Recover the existing recording before starting another interview.");
+  if(!canCaptureVideo()) throw new Error("This video preview needs desktop Chrome or Edge with local storage available.");
+  let cam:MediaStream|null=null;
+  try {
+   cam=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:24,max:30}},audio:false});
+   const manifest:VideoManifest={id:crypto.randomUUID(),sessionId,generation:1,mimeType:VIDEO_MIME,chunks:[],sealed:false,partial:false};
+   // Persist the stable ID before a network write can have an ambiguous outcome.
+   await videoStore.saveManifest(manifest);
+   setRecovery([manifest]);
+   await videoRequest("/api/session/video",{id:manifest.id,sessionId,consent:true,consentVersion:"internal-video-spike-v1"});
+   const queue=new VideoUploadQueue(manifest,videoStore,videoTransport,()=>captureRef.current?.interrupt());
+   queueRef.current=queue;
+   const capture=new WebcamCapture(cam,mixed,queue,()=>{setState("attention");interruptionRef.current();},()=>setState("attention"));
+   captureRef.current=capture;setCamera(cam);capture.start();setState("capturing");
+  } catch(error) {cam?.getTracks().forEach(track=>track.stop());setState("attention");throw error;}
+ },[enabled,consent,recovery.length,sessionId]);
+ const finish=useCallback(async()=>{
+  if(!captureRef.current) return;
+  setState("uploading");
+  try {
+   await captureRef.current.stop();
+   if(queueRef.current) await clearVideoManifest(queueRef.current.manifest.id);
+   setRecovery([]);setState("processing");setCamera(null);
+  } catch {setState("attention");throw new Error("Video upload needs recovery.");}
+ },[]);
+ const retry=useCallback(async()=>{
+  setState("uploading");
+  try {
+   for(const manifest of await recoverVideoManifests(sessionId)) {
+    // Reauthorize a possibly lost start response using the original ID and consent.
+    await videoRequest("/api/session/video",{id:manifest.id,sessionId,consent:true,consentVersion:"internal-video-spike-v1"});
+    const queue=new VideoUploadQueue(manifest,videoStore,videoTransport,()=>{});
+    if(!manifest.sealed) await queue.seal(true); // Reload loses the undelivered tail.
+    await queue.retry();await clearVideoManifest(manifest.id);
+   }
+   setRecovery([]);setState("processing");
+  } catch {setState("attention");throw new Error("Recording still needs recovery. Keep this browser data and retry.");}
+ },[sessionId]);
+ useEffect(()=>()=>{captureRef.current?.interrupt();},[]);
+ return {enabled,consent,setConsent,state,camera,recovery,start,finish,retry,active:()=>!!captureRef.current};
+}

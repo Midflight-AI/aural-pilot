@@ -490,6 +490,7 @@ export function useInterviewRecording({
 
   return {
     start,
+    getMixedStream: () => mixDestRef.current?.stream ?? null,
     stop,
     addTtsChunk,
     cancelTts,
