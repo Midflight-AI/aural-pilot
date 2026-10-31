@@ -4,8 +4,7 @@ DO $$
 BEGIN
   IF has_table_privilege('anon', 'public.candidates', 'SELECT')
      OR has_table_privilege('authenticated', 'public.candidates', 'SELECT')
-     OR has_table_privilege('authenticated', 'public.sessions', 'UPDATE')
-     OR has_table_privilege('anon', 'storage.objects', 'SELECT') THEN
+     OR has_table_privilege('authenticated', 'public.sessions', 'UPDATE') THEN
     RAISE EXCEPTION 'Pilot browser access boundary is open';
   END IF;
   IF NOT has_table_privilege('service_role', 'public.candidates', 'SELECT')
@@ -31,4 +30,20 @@ BEGIN
   END;
 END;
 $$;
+INSERT INTO storage.objects(bucket_id,name)
+SELECT id, 'pilot-access-check' FROM storage.buckets WHERE id='recordings';
+SET LOCAL ROLE anon;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM storage.objects WHERE name='pilot-access-check') THEN
+    RAISE EXCEPTION 'Anonymous media read succeeded';
+  END IF;
+END $$;
+RESET ROLE;
+SET LOCAL ROLE authenticated;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM storage.objects WHERE name='pilot-access-check') THEN
+    RAISE EXCEPTION 'Direct authenticated media read succeeded';
+  END IF;
+END $$;
+RESET ROLE;
 ROLLBACK;
