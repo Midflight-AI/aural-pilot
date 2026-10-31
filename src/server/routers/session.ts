@@ -31,28 +31,8 @@ export const sessionRouter = router({
         });
       }
 
-      // Enforce invite-only access via candidates table
       if (interview.requireInvite) {
-        const email = input.participantEmail?.trim().toLowerCase();
-        if (!email) {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "Email is required for invite-only interviews.",
-          });
-        }
-        const { data: candidate } = await ctx.supabase
-          .from("candidates")
-          .select("id")
-          .eq("interviewId", interview.id)
-          .eq("email", email)
-          .single();
-
-        if (!candidate) {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "Your email is not on the invite list for this interview.",
-          });
-        }
+        throw new TRPCError({ code: "FORBIDDEN", message: "Use your private invitation link to start this interview." });
       }
 
       const questions = (interview.questions ?? []) as { id: string }[];
@@ -198,19 +178,6 @@ export const sessionRouter = router({
       const interview = candidate.interview as any;
       if (!interview) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Interview is no longer available" });
-      }
-
-      // If session already exists, return it
-      if (candidate.sessionId) {
-        const { data: existingSession } = await ctx.supabase
-          .from("sessions")
-          .select("*")
-          .eq("id", candidate.sessionId)
-          .single();
-
-        if (existingSession) {
-          return { sessionId: existingSession.id, interview, isExisting: true };
-        }
       }
 
       // Sort questions
