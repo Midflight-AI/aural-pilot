@@ -96,6 +96,18 @@ export async function acknowledgeChunk(id: string, c: ChunkDescriptor) {
   if (data.size !== c.bytes || createHash("sha256").update(Buffer.from(await data.arrayBuffer())).digest("hex") !== c.sha256) throw new VideoError(409, "chunk_corrupt");
   await registerChunk(id,c,true);
 }
+/** Recover a successful immutable PUT whose acknowledgement was lost. */
+export async function grantChunkUpload(id: string, c: ChunkDescriptor) {
+  const {data,error} = await db.storage.from(SOURCE_BUCKET).createSignedUploadUrl(sourcePath(id,c),{upsert:false});
+  if (!error && data) return {url:data.signedUrl,acknowledged:false};
+  // Storage can refuse a new grant when the object already exists. Never
+  // overwrite it or trust existence alone: validate exact bytes and checksum.
+  try { await acknowledgeChunk(id,c); return {acknowledged:true}; }
+  catch (failure) {
+    if (failure instanceof VideoError && failure.message === "chunk_corrupt") throw failure;
+    throw new VideoError(503,"upload_unavailable");
+  }
+}
 export function canonicalManifest(value: unknown, id: string, sessionId: string): VideoManifest {
   const m = value as VideoManifest;
   if (!m || m.id !== id || m.sessionId !== sessionId || typeof m.partial !== "boolean") throw new VideoError(400,"invalid_manifest");

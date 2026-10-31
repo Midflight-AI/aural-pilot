@@ -3,7 +3,7 @@ import { processVideoQueue } from "@/lib/video/processor";
 export const maxDuration = 800;
 import { createHash } from "node:crypto";
 import { supabaseAdmin as db } from "@/lib/supabase/admin";
-import { acknowledgeChunk,canonicalManifest,chunkDescriptor,json,jsonBody,ownedRecording,registerChunk,responseError,SOURCE_BUCKET,sourcePath,VideoError } from "@/lib/video/server";
+import { acknowledgeChunk,canonicalManifest,chunkDescriptor,json,jsonBody,ownedRecording,registerChunk,responseError,grantChunkUpload,VideoError } from "@/lib/video/server";
 export async function POST(request:Request,{params}:{params:Promise<{id:string}>}) {
  try {
   const {id}=await params; const row=await ownedRecording(id,request); const body=await jsonBody(request);
@@ -12,9 +12,7 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
    const acknowledged=await registerChunk(id,c,false);
    if(acknowledged) return json({acknowledged:true});
    if(body.action==="acknowledge") { await acknowledgeChunk(id,c);return json({acknowledged:true}); }
-   const {data,error}=await db.storage.from(SOURCE_BUCKET).createSignedUploadUrl(sourcePath(id,c),{upsert:false});
-   if(error || !data) throw new VideoError(503,"upload_unavailable");
-   return json({url:data.signedUrl,acknowledged:false});
+   return json(await grantChunkUpload(id,c));
   }
   if(body.action==="finalize") {
    const manifest=canonicalManifest(body.manifest,id,row.session_id);
