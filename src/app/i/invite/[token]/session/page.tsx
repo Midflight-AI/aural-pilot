@@ -83,6 +83,7 @@ export default function InviteSessionPage() {
         timeLimitMinutes={interview.timeLimitMinutes}
         language={interview.language}
         antiCheatingEnabled={!!interview.antiCheatingEnabled}
+        videoEnabled={!!interview.videoEnabled}
         voiceEnabled={!!interview.voiceEnabled}
         chatEnabled={!!interview.chatEnabled}
         aiName={interview.aiName}
