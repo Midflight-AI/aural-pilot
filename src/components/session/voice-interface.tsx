@@ -1279,8 +1279,7 @@ export function VoiceInterface({
         withTimeout(saveAllCodeSnippets(), 5000, "save code snippets"),
       ]);
 
-      try { await videoSpike.finish(); } catch { videoSaved = false; setVideoRecoveryNeeded(true); }
-      if (!videoSaved) setIsSaving(false);
+      try { await videoSpike.finish(); } catch { videoSaved = false; }
 
       try {
         if (recording.isRecording) {

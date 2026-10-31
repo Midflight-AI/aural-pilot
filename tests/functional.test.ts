@@ -669,3 +669,66 @@ test("interview creation preserves both drafts across tabs and allows prompt res
     assert.equal(await page.getByRole("tabpanel").count(), 1, "Only the active draft is exposed to accessibility navigation");
   } finally { await page.close(); }
 });
+
+test("video consent with camera denial never connects the interview relay", async () => {
+  const context = await browser.newContext({ locale: "en-US" });
+  const page = await context.newPage();
+  await page.route("**/api/session/video?*", route => route.fulfill({ status: 200, contentType: "application/json", body: '{"enabled":true}' }));
+  await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=english-failover`);
+  await waitForCondition(async () => (await page.getByTestId("harness-ready").textContent()) === "true");
+  await page.evaluate(() => {
+    const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = async constraints => {
+      if (constraints?.video) throw new DOMException("Camera denied for test", "NotAllowedError");
+      return original(constraints);
+    };
+  });
+  await page.getByRole("checkbox", { name: /Record my webcam/ }).check();
+  await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await waitForText(page, "Camera denied for test");
+  assert.deepEqual(await readRelayConnections(page), []);
+  assert.equal(await page.getByTestId("parent-complete").textContent(), "false");
+  await context.close();
+});
+
+test("video upload failure keeps recovery visible and preserves audio before parent completion", async () => {
+  const context = await browser.newContext({ locale: "en-US" });
+  const page = await context.newPage();
+  let offline = true;
+  let audioSaved = false;
+  let finalized = false;
+  await page.route("**/api/session/video?*", route => route.fulfill({ status: 200, contentType: "application/json", body: '{"enabled":true}' }));
+  await page.route("**/api/session/video", route => route.fulfill({ status: 200, contentType: "application/json", body: '{"state":"capturing"}' }));
+  await page.route("**/api/session/video/*", async route => {
+    const body = route.request().postDataJSON();
+    if (offline) { await route.fulfill({ status: 503, body: "{}" }); return; }
+    if (body.action === "finalize") { finalized = true; assert.equal(audioSaved, true); }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body.action === "upload" ? { acknowledged: true } : { state: "processing" }) });
+  });
+  await page.route("**/api/session/upload", route => route.fulfill({ status: 200, contentType: "application/json", body: '{"url":"https://media.example.invalid/audio.webm"}' }));
+  await page.route("**/api/trpc/session.saveRecording", async route => { audioSaved = true; await route.fulfill({ status: 200, contentType: "application/json", body: "{}" }); });
+  await page.route("**/api/voice/save", route => route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true}' }));
+  await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=farewell-complete`);
+  await waitForCondition(async () => (await page.getByTestId("harness-ready").textContent()) === "true");
+  await page.evaluate(() => {
+    const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = async constraints => {
+      if (constraints?.video) {
+        const canvas = document.createElement("canvas"); canvas.width = 640; canvas.height = 480;
+        canvas.getContext("2d")!.fillRect(0, 0, 640, 480);
+        return canvas.captureStream(24);
+      }
+      return original(constraints);
+    };
+  });
+  await page.getByRole("checkbox", { name: /Record my webcam/ }).check();
+  await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.getByRole("button", { name: "Retry video upload" }).waitFor({ timeout: 15000 });
+  assert.equal(audioSaved, true);
+  assert.equal(await page.getByTestId("parent-complete").textContent(), "false");
+  offline = false;
+  await page.getByRole("button", { name: "Retry video upload" }).click();
+  await waitForCondition(async () => (await page.getByTestId("parent-complete").textContent()) === "true");
+  assert.equal(finalized, true);
+  await context.close();
+});
