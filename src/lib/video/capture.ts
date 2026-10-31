@@ -37,6 +37,7 @@ export class WebcamCapture {
     videoTrack.addEventListener("ended", this.interrupt);
     audioTrack.addEventListener("ended", this.interrupt);
   }
+  isRecording(): boolean { return this.recorder.state === "recording"; }
   start(): void {
     this.startMs = performance.now();
     this.recorder.start(5000);
@@ -61,6 +62,8 @@ export class WebcamCapture {
           this.recorder.stop();
         });
       }
+      // Release the camera immediately; network recovery does not need live tracks.
+      this.camera.getTracks().forEach(track => track.stop());
       // stop fires after final dataavailable; queue.seal waits for its durable write.
       await this.queue.seal(this.interrupted);
       await this.queue.retry();

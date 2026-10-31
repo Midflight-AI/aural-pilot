@@ -738,7 +738,7 @@ test("video upload failure keeps recovery visible and preserves audio before par
   assert.equal(audioSaved, true);
   assert.equal(await page.getByTestId("parent-complete").textContent(), "false");
   offline = false;
-  await page.getByRole("button", { name: "Retry video upload" }).click();
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
   try {
     await waitForCondition(async () => (await page.getByTestId("parent-complete").textContent()) === "true");
   } catch (error) {

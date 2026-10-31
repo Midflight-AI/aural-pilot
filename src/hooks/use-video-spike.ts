@@ -10,6 +10,7 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent =
  const [state,setState]=useState<"idle"|"capturing"|"uploading"|"processing"|"attention">("idle");
  const [camera,setCamera]=useState<MediaStream|null>(null);
  const [recovery,setRecovery]=useState<VideoManifest[]>([]);
+ const retryTaskRef=useRef<Promise<void>|null>(null);
  const captureRef=useRef<WebcamCapture|null>(null);
  const queueRef=useRef<VideoUploadQueue|null>(null);
  const preparedRef=useRef<{camera:MediaStream;queue:VideoUploadQueue}|null>(null);
@@ -62,7 +63,9 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent =
    setRecovery([]);setState("processing");setCamera(null);
   } catch {setState("attention");throw new Error("Video upload needs recovery.");}
  },[]);
- const retry=useCallback(async()=>{
+ const retry=useCallback(()=>{
+  if(retryTaskRef.current) return retryTaskRef.current;
+  retryTaskRef.current=(async()=>{
   setState("uploading");
   try {
    for(const manifest of await recoverVideoManifests(sessionId)) {
@@ -74,7 +77,16 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent =
    }
    setRecovery([]);setState("processing");
   } catch {setState("attention");throw new Error("Recording still needs recovery. Keep this browser data and retry.");}
+  })().finally(()=>{retryTaskRef.current=null;});
+  return retryTaskRef.current;
  },[sessionId]);
+ useEffect(()=>{
+  if(state!=="attention" || captureRef.current?.isRecording()) return;
+  const resume=()=>{if(navigator.onLine) void retry().catch(()=>{});};
+  const timer=setInterval(resume,15000);
+  window.addEventListener("online",resume);
+  return()=>{clearInterval(timer);window.removeEventListener("online",resume);};
+ },[state,retry]);
  useEffect(()=>()=>{captureRef.current?.interrupt();if(!captureRef.current) preparedRef.current?.camera.getTracks().forEach(track=>track.stop());},[]);
  const releasePreparedCamera=useCallback(()=>{
   if(captureRef.current) return;

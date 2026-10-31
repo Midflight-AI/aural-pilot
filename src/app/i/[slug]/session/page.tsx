@@ -1,5 +1,7 @@
 "use client";
 
+import { VideoRecovery } from "@/components/session/video-recovery";
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { AntiCheatingGuard } from "@/components/session/anti-cheating-banner";
@@ -93,11 +95,12 @@ export default function SlugSessionPage() {
 
   if (session.data.status === "COMPLETED" || completed) {
     try { localStorage.removeItem(STORAGE_PREFIX + slug); } catch { /* noop */ }
-    return <SessionEndedScreen reason={completionReason} />;
+    return <><VideoRecovery sessionId={sessionId!} /><SessionEndedScreen reason={completionReason} /></>;
   }
 
   if (!onboardingDone) {
     return (
+      <><VideoRecovery sessionId={sessionId!} />
       <IntervieweeOnboarding
         sessionId={sessionId!}
         interviewTitle={interview.data.title}
@@ -112,7 +115,7 @@ export default function SlugSessionPage() {
         aiName={interview.data.aiName}
         questionTypes={interview.data.questions.map((q: any) => q.type as string)}
         onComplete={consent => { setRecordWebcam(consent); setOnboardingDone(true); }}
-      />
+      /></>
     );
   }
 

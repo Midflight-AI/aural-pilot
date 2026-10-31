@@ -116,10 +116,16 @@ export class VideoUploadQueue {
   async drain(): Promise<void> {
     if (this.drainTask) return this.drainTask;
     this.drainTask = (async () => {
-      await this.writes;
-      for (const chunk of await this.store.pending(this.manifest.id)) {
-        await this.transport.upload(this.manifest, chunk);
-        await this.store.acknowledge(this.manifest.id, chunk.sequence);
+      // More chunks can be persisted while this batch is uploading, including
+      // the final dataavailable event. Drain all batches before resolving.
+      while (true) {
+        await this.writes;
+        const pending = await this.store.pending(this.manifest.id);
+        if (!pending.length) break;
+        for (const chunk of pending) {
+          await this.transport.upload(this.manifest, chunk);
+          await this.store.acknowledge(this.manifest.id, chunk.sequence);
+        }
       }
     })().finally(() => { this.drainTask = null; });
     return this.drainTask;

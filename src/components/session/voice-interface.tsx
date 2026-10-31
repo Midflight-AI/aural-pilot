@@ -767,6 +767,13 @@ export function VoiceInterface({
     recording.start(micStream ?? undefined);
   }, [voice.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (videoRecoveryNeeded && videoSpike.state === "processing") {
+      setVideoRecoveryNeeded(false);
+      if (locallyCompleted) onComplete?.(localCompletionReason);
+    }
+  }, [videoRecoveryNeeded, videoSpike.state, locallyCompleted, localCompletionReason, onComplete]);
+
   // A terminal relay failure must not leave capture running on a disconnected screen.
   const wasConnectedRef = useRef(false);
   useEffect(() => {
@@ -1662,7 +1669,7 @@ export function VoiceInterface({
   if (locallyCompleted && videoSpike.active()) {
     return <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6" role="status">
       <h1 className="text-xl font-semibold">Interview finished</h1>
-      <p>{videoRecoveryNeeded ? "Video upload is interrupted. Keep this browser data and retry." : "Saving your video. Keep this tab open."}</p>
+      <p>{videoRecoveryNeeded ? "Video upload paused. Retrying automatically. Keep this tab and browser data open." : "Finishing the remaining video upload. Keep this tab open."}</p>
       {videoRecoveryNeeded && <Button onClick={async () => { try { await videoSpike.retry(); setVideoRecoveryNeeded(false); onComplete?.(localCompletionReason); } catch (error) { setError(error instanceof Error ? error.message : "Recovery failed."); } }}>Retry video upload</Button>}
       {error && <p role="alert">{error}</p>}
     </div>;

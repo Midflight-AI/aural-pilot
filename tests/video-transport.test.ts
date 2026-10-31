@@ -86,3 +86,22 @@ test("an oversized callback is rejected before buffering media", async () => {
  await queue.append(new Blob([new Uint8Array(21*1024*1024)]),5000);
  assert.equal(f.chunks.size,0);assert.deepEqual(limits,["backlog_limit"]);assert.equal(f.manifest.partial,true);
 });
+
+test("final chunk appended during an upload is acknowledged before finalization", async () => {
+ const f=fixture();
+ let release!:()=>void;
+ let started!:()=>void;
+ const uploading=new Promise<void>(resolve=>{started=resolve;});
+ const gate=new Promise<void>(resolve=>{release=resolve;});
+ const sent:number[]=[];
+ const queue=new VideoUploadQueue(f.manifest,f.store,{
+  async upload(_m,chunk){if(chunk.sequence===0){started();await gate;}sent.push(chunk.sequence);},
+  async finalize(m){assert.equal(f.chunks.size,0);assert.equal(sent.length,m.chunks.length);},
+ },()=>assert.fail());
+ await queue.append(new Blob(["first"]),5000);
+ const inFlight=queue.drain();await uploading;
+ await queue.append(new Blob(["last"]),8000);await queue.seal();
+ const finishing=queue.retry();release();
+ await Promise.all([inFlight,finishing]);
+ assert.deepEqual(sent,[0,1]);
+});
