@@ -1282,15 +1282,17 @@ export function VoiceInterface({
     setIsSaving(true);
 
     voice.stopListening();
+    recording.pauseCapture();
     let videoSaved = true;
+    // Stop capture now; drain video alongside audio/metadata rather than adding
+    // post-interview upload time to either media or the completion wait.
+    const videoFinishing = videoSpike.finish().catch(() => { videoSaved = false; });
 
     try {
       await Promise.allSettled([
         withTimeout(saveAllDrawings(), 5000, "save drawings"),
         withTimeout(saveAllCodeSnippets(), 5000, "save code snippets"),
       ]);
-
-      try { await videoSpike.finish(); } catch { videoSaved = false; }
 
       try {
         if (recording.isRecording) {
@@ -1338,6 +1340,7 @@ export function VoiceInterface({
     } catch (err) {
       console.error("[voice] Failed to end interview cleanly:", err);
     } finally {
+      await videoFinishing;
       if (videoSaved) onComplete?.(normalizedReason);
       else { setVideoRecoveryNeeded(true); setIsSaving(false); }
     }

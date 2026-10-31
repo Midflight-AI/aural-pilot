@@ -491,7 +491,15 @@ export function useInterviewRecording({
     };
   }, []);
 
+  // Freeze media time immediately when the interview ends. Metadata and upload
+  // work may continue, but must not extend the saved interview duration.
+  const pauseCapture = useCallback(() => {
+    if (recorderRef.current?.state === "recording") recorderRef.current.pause();
+    if (screenshotTimerRef.current) clearInterval(screenshotTimerRef.current);
+  }, []);
+
   return {
+    pauseCapture,
     start,
     getMixedStream: () => mixDestRef.current?.stream ?? null,
     stop,
