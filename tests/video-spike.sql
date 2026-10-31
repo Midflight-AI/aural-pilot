@@ -8,9 +8,9 @@ create table public.sessions(id uuid primary key);
 \ir ../supabase/migrations/20261031082242_video_spike.sql
 insert into auth.users values('11111111-1111-4111-8111-111111111111');
 insert into sessions values('22222222-2222-4222-8222-222222222222');
-insert into video_spike_recordings(v_id,session_id,owner_id,consent_version) values('33333333-3333-4333-8333-333333333333','22222222-2222-4222-8222-222222222222','11111111-1111-4111-8111-111111111111','internal-video-spike-v1');
+insert into video_spike_recordings(id,session_id,owner_id,consent_version) values('33333333-3333-4333-8333-333333333333','22222222-2222-4222-8222-222222222222','11111111-1111-4111-8111-111111111111','internal-video-spike-v1');
 do $$
-declare v_id uuid:='33333333-3333-4333-8333-333333333333'; token uuid:='44444444-4444-4444-8444-444444444444'; m jsonb; result text;
+declare v_id uuid:='33333333-3333-4333-8333-333333333333'; token uuid:='44444444-4444-4444-8444-444444444444'; m jsonb;
 begin
  if has_table_privilege('authenticated','public.video_spike_recordings','select') or has_function_privilege('authenticated','public.video_spike_finalize(uuid,jsonb,text)','execute') then raise exception 'browser privileges leaked'; end if;
  if not (select relrowsecurity from pg_class where oid='public.video_spike_recordings'::regclass) then raise exception 'RLS missing'; end if;
