@@ -14,7 +14,7 @@ test("lost acknowledgement recovers existing immutable bytes, never corrupt or m
   async createSignedUploadUrl(){return mode==="new"?{data:{signedUrl:"https://storage.example/upload"},error:null}:{data:null,error:{message:"object already exists"}};},
   async download(){return mode==="missing"?{data:null,error:{message:"missing"}}:{data:mode==="corrupt"?new Blob(["bad"]):bytes,error:null};},
  }));
- t.mock.method(db,"rpc",async(_name,args)=>{assert.equal(args?.p_ack,true);acks++;return {data:true,error:null};});
+ t.mock.method(db,"rpc",async(_name:string,args:Record<string,unknown>)=>{assert.equal(args?.p_ack,true);acks++;return {data:true,error:null};});
  assert.deepEqual(await grantChunkUpload("recording",descriptor),{acknowledged:true});assert.equal(acks,1);
  mode="corrupt";await assert.rejects(grantChunkUpload("recording",descriptor),/chunk_corrupt/);
  mode="missing";await assert.rejects(grantChunkUpload("recording",descriptor),/upload_unavailable/);assert.equal(acks,1);
