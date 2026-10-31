@@ -1,5 +1,6 @@
 "use client";
 
+import { RecordingFunctionalHarness } from "./recording-functional-harness";
 import { RecordingCameraCheck } from "@/components/session/interviewee-onboarding";
 import { VoiceInterface } from "@/components/session/voice-interface";
 import { useEffect, useState } from "react";
@@ -444,6 +445,8 @@ export function VoiceFunctionalHarness({
     installFunctionalRelayMocks(activeScenario);
     setMocksReady(true);
   }, [scenario]);
+
+  if (scenario === "recorded-voices") return <RecordingFunctionalHarness />;
 
   if (scenario === "camera-checklist") return (
     <div className="mx-auto max-w-2xl p-4">

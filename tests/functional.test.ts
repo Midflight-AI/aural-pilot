@@ -822,3 +822,19 @@ test("failed video connection releases camera without recording and can retry", 
     assert.equal(recordingIds.size, 1, "Retries and reload retain the prepared recording identity");
   } finally { await page.close(); }
 });
+
+
+test("encoded recording keeps pre-start microphone, mute, replacement mic and interviewer", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/functional-tests/voice?scenario=recorded-voices`);
+    await page.getByRole("button", { name: "Test recorded voices" }).click();
+    await waitForCondition(async () => !!(await page.getByTestId("recorded-voices").textContent()), 20000);
+    const result = JSON.parse((await page.getByTestId("recorded-voices").textContent())!);
+    assert.equal(result.error, undefined);
+    for (const key of ["beforeStartMic", "interviewer", "unmutedMic", "interviewerAfterUnmute"]) {
+      assert.ok(result[key] > 0.025, `${key} missing from encoded recording: ${JSON.stringify(result)}`);
+    }
+    assert.ok(result.mutedMic < 0.005, "Muted microphone must not be recorded");
+  } finally { await page.close(); }
+});

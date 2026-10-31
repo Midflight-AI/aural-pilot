@@ -738,6 +738,7 @@ export function VoiceInterface({
     onAIResponse: handleAIResponse,
     onError: handleError,
     onTtsChunk: recording.addTtsChunk,
+    onMicStream: recording.attachMicStream,
     onInterrupt: recording.cancelTts,
     onWhiteboardSnapshotRequest: exportWhiteboardPngForRelay,
   });
@@ -783,15 +784,6 @@ export function VoiceInterface({
       handleEndInterviewRef.current();
     }
   }, [voice.isConnected, locallyCompleted]);
-
-  // Attach mic stream to recording when it becomes available
-  useEffect(() => {
-    if (!voice.isListening) return;
-    const micStream = voice.mediaStreamRef.current;
-    if (micStream) {
-      recording.attachMicStream(micStream);
-    }
-  }, [voice.isListening]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Countdown timer (starts when voice connects) ────────────────
   useEffect(() => {
@@ -2187,7 +2179,7 @@ export function VoiceInterface({
                       }
                       if (!await voice.connect()) throw new Error("The interview could not connect. Your camera is off. Please try again.");
                       if (withVideo) {
-                        await recording.start();
+                        await recording.start(voice.mediaStreamRef.current ?? undefined);
                         const mixed = recording.getMixedStream();
                         if (!mixed) throw new Error("Audio recorder unavailable.");
                         await videoSpike.start(mixed);
