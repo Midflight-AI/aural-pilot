@@ -84,4 +84,16 @@ conflicting chunks, duplicate finalization, stale worker fencing, failed-process
 retry, tombstone protection, RLS and denied browser grants. The Chromium mixer
 probe also sought to 30 seconds and resumed playback (readyState 4, no media error).
 
+The feature migration was applied only to shared isolated preview database
+`fjagcdzwvwfdufefpglm`, with its exact filename recorded in the migration ledger.
+Rollback-only lifecycle/access assertions passed there, and private bucket limits
+and denied browser privileges were verified. On explicit approval, branch-specific
+Aural and Ramp credentials and the preview-only connection were configured; no
+production environment was changed.
+
+Two targeted browser cases passed locally: camera denial prevents voice connection,
+and an upload failure retains recovery until audio save completes, with retry then
+allowing parent completion. The synthetic microphone fixture explicitly uses the
+existing Unmute control. These are mocked browser cases, not deployed interview proof.
+
 Full validation runs remotely. A clean build alone does not establish these gates.

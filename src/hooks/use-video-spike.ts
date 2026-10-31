@@ -13,6 +13,7 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void) {
  const [recovery,setRecovery]=useState<VideoManifest[]>([]);
  const captureRef=useRef<WebcamCapture|null>(null);
  const queueRef=useRef<VideoUploadQueue|null>(null);
+ const preparedRef=useRef<{camera:MediaStream;queue:VideoUploadQueue}|null>(null);
  const interruptionRef=useRef(onInterrupted);
  interruptionRef.current=onInterrupted;
  useEffect(()=>{
@@ -25,7 +26,8 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void) {
   }).catch(()=>{});
   return()=>{cancelled=true;};
  },[sessionId]);
- const start=useCallback(async(mixed:MediaStream)=>{
+ const prepare=useCallback(async()=>{
+  if(preparedRef.current?.camera.getVideoTracks()[0]?.readyState === "live") return;
   if(!enabled||!consent) return;
   if(recovery.length) throw new Error("Recover the existing recording before starting another interview.");
   if(!canCaptureVideo()) throw new Error("This video preview needs desktop Chrome or Edge with local storage available.");
@@ -39,10 +41,15 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void) {
    await videoRequest("/api/session/video",{id:manifest.id,sessionId,consent:true,consentVersion:"internal-video-spike-v1"});
    const queue=new VideoUploadQueue(manifest,videoStore,videoTransport,()=>captureRef.current?.interrupt());
    queueRef.current=queue;
-   const capture=new WebcamCapture(cam,mixed,queue,()=>{setState("attention");interruptionRef.current();},()=>setState("attention"));
-   captureRef.current=capture;setCamera(cam);capture.start();setState("capturing");
+   preparedRef.current={camera:cam,queue};setCamera(cam);
   } catch(error) {cam?.getTracks().forEach(track=>track.stop());setState("attention");throw error;}
  },[enabled,consent,recovery.length,sessionId]);
+ const start=useCallback(async(mixed:MediaStream)=>{
+  const prepared=preparedRef.current;
+  if(!prepared) throw new Error("Camera preparation is required.");
+  const capture=new WebcamCapture(prepared.camera,mixed,prepared.queue,()=>{setState("attention");interruptionRef.current();},()=>setState("attention"),()=>setState("capturing"));
+  captureRef.current=capture;capture.start();setState("capturing");
+ },[]);
  const finish=useCallback(async()=>{
   if(!captureRef.current) return;
   setState("uploading");
@@ -65,6 +72,6 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void) {
    setRecovery([]);setState("processing");
   } catch {setState("attention");throw new Error("Recording still needs recovery. Keep this browser data and retry.");}
  },[sessionId]);
- useEffect(()=>()=>{captureRef.current?.interrupt();},[]);
- return {enabled,consent,setConsent,state,camera,recovery,start,finish,retry,active:()=>!!captureRef.current};
+ useEffect(()=>()=>{captureRef.current?.interrupt();if(!captureRef.current) preparedRef.current?.camera.getTracks().forEach(track=>track.stop());},[]);
+ return {enabled,consent,setConsent,state,camera,recovery,prepare,start,finish,retry,active:()=>!!captureRef.current};
 }

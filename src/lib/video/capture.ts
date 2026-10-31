@@ -20,6 +20,7 @@ export class WebcamCapture {
     private queue: VideoUploadQueue,
     private onInterrupted: () => void,
     private onUploadError: () => void,
+    private onUploadRecovered: () => void = () => {},
   ) {
     const videoTrack = camera.getVideoTracks()[0];
     const audioTrack = mixedAudio.getAudioTracks()[0];
@@ -29,7 +30,7 @@ export class WebcamCapture {
     });
     this.recorder.ondataavailable = (event) => {
       if (event.data.size) void this.queue.append(event.data, performance.now() - this.startMs)
-        .then(() => this.queue.drain()).catch(() => this.onUploadError());
+        .then(() => this.queue.drain()).then(() => { if (!this.stopTask) this.onUploadRecovered(); }).catch(() => this.onUploadError());
     };
     this.recorder.onerror = () => this.interrupt();
     this.recorder.onstop = () => { if (!this.stopTask) this.interrupt(); };
@@ -39,7 +40,7 @@ export class WebcamCapture {
   start(): void {
     this.startMs = performance.now();
     this.recorder.start(5000);
-    this.timer = setInterval(() => { void this.queue.retry().catch(() => this.onUploadError()); }, 5000);
+    this.timer = setInterval(() => { void this.queue.retry().then(() => { if (!this.stopTask) this.onUploadRecovered(); }).catch(() => this.onUploadError()); }, 5000);
     this.maximumTimer = setTimeout(this.interrupt, 30 * 60_000);
   }
   interrupt = (): void => {

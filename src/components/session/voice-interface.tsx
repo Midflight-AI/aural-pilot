@@ -2151,7 +2151,7 @@ export function VoiceInterface({
                   Record my webcam and both voices for this internal preview. Authorized recruiters can review it; playback access expires after 30 days. Closing this tab can lose unsaved video.
                 </label>
               )}
-              {videoSpike.enabled && (videoRecoveryNeeded || (videoSpike.recovery.length > 0 && !videoSpike.active())) && (
+              {videoSpike.enabled && (videoRecoveryNeeded || (videoSpike.recovery.length > 0 && !videoSpike.active() && !isStartingInterview)) && (
                 <div role="status" className="space-y-2">
                   <p>Video needs recovery in this browser. Audio, transcript and report are kept separately.</p>
                   <Button onClick={async () => { try { await videoSpike.retry(); setVideoRecoveryNeeded(false); if (locallyCompleted) onComplete?.(localCompletionReason); } catch (error) { setError(error instanceof Error ? error.message : "Recovery failed."); } }}>Retry video upload</Button>
@@ -2167,6 +2167,7 @@ export function VoiceInterface({
                     setIsStartingInterview(true);
                     try {
                       if (videoSpike.enabled && videoSpike.consent) {
+                        await videoSpike.prepare();
                         recordingStartedRef.current = true;
                         await recording.start();
                         const mixed = recording.getMixedStream();

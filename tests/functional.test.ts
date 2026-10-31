@@ -163,7 +163,7 @@ before(async () => {
   baseUrl = `http://127.0.0.1:${port}`;
   serverProcess = startAppServer(port);
   await waitForHttp(`${baseUrl}/login`);
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, ...(process.env.FUNCTIONAL_BROWSER_CHANNEL ? { channel: process.env.FUNCTIONAL_BROWSER_CHANNEL } : {}) });
 });
 
 after(async () => {
@@ -588,6 +588,8 @@ test("voice completion shows the farewell, waits for final save, and only then n
     "Expected functional voice harness mocks to be ready",
   );
   await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.locator('[data-tour="voice-mic"] button').click();
+  await page.locator('[data-tour="voice-mic"]').getByText("Mute", { exact: true }).waitFor();
 
   await delay(1_500);
   const earlyBodyText = (await page.locator("body").textContent()) ?? "";
@@ -715,20 +717,34 @@ test("video upload failure keeps recovery visible and preserves audio before par
     navigator.mediaDevices.getUserMedia = async constraints => {
       if (constraints?.video) {
         const canvas = document.createElement("canvas"); canvas.width = 640; canvas.height = 480;
-        canvas.getContext("2d")!.fillRect(0, 0, 640, 480);
-        return canvas.captureStream(24);
+        const stream = canvas.captureStream(24);
+        let frame=0;
+        const draw = setInterval(() => { const ctx=canvas.getContext("2d")!;ctx.fillStyle=frame++%2?"red":"blue";ctx.fillRect(0, 0, 640, 480); }, 40);
+        stream.getVideoTracks()[0].addEventListener("ended", () => clearInterval(draw));
+        return stream;
       }
       return original(constraints);
     };
   });
   await page.getByRole("checkbox", { name: /Record my webcam/ }).check();
   await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.locator('[data-tour="voice-mic"] button').click();
+  await page.locator('[data-tour="voice-mic"]').getByText("Mute", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Retry video upload" }).waitFor({ timeout: 15000 });
   assert.equal(audioSaved, true);
   assert.equal(await page.getByTestId("parent-complete").textContent(), "false");
   offline = false;
   await page.getByRole("button", { name: "Retry video upload" }).click();
-  await waitForCondition(async () => (await page.getByTestId("parent-complete").textContent()) === "true");
+  try {
+    await waitForCondition(async () => (await page.getByTestId("parent-complete").textContent()) === "true");
+  } catch (error) {
+    console.error("Synthetic recovery fixture state:", await page.locator("body").innerText());
+    console.error("Synthetic recovery manifests:", await page.evaluate(async () => {
+      const request = indexedDB.open("aural-video-spike-v1", 1);
+      return new Promise(resolve => { request.onsuccess = () => { const db=request.result;const rows=db.transaction("manifests").objectStore("manifests").getAll();rows.onsuccess=()=>{resolve(rows.result.map(m=>({sealed:m.sealed,partial:m.partial,chunks:m.chunks})));db.close();}; }; });
+    }));
+    throw error;
+  }
   assert.equal(finalized, true);
   await context.close();
 });
