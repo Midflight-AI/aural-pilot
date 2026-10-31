@@ -43,7 +43,11 @@ from an event. Three deliveries per tick, 10-second deadline each, fenced leases
 bounded jitter and Retry-After, dead letters after eight failures/configuration
 errors. Redrive preserves the immutable event and regenerates delivery headers.
 
-Vercel preview protection is separate. No new destination has transport approval.
+Vercel preview protection is separate. Josh approved connecting the two test apps.
+Aural Preview can call Ramp Preview through short-lived Vercel identity tokens;
+the existing Ramp Preview to Aural Preview rule remains in place. Set
+`vercelTrustedSource: true` on the producer destination and Ramp connection.
+Worker secrets and database credentials are scoped to `codex/aural-webhooks`.
 Do not reuse the old dpl_7mNEBgoHhqoGTCRfDNK1SDZNVRu3 scheduler authorization,
 expand its scope, or extend its 2026-11-07T05:39:26Z expiry. Provision approved
 transport for the concrete new destination before enabling delivery.
@@ -80,13 +84,22 @@ Read-only check on 31 October: isolated Ramp pzajndpjqoogcczztjxg has original
 20261031032106/043224/044305. Main has renamed copies 20261031061643/44/45.
 Do not run an unqualified db push against this ledger or reapply these bodies.
 Verify names and normalized bodies before recording a reconciliation mapping.
-Aural knbbkrfatygusjqjcjcy has baseline 20261031013734 and storage 20261031013913.
-Production and the shared preview database are out of scope.
+The inbox migration 20261031081726 is applied to isolated Ramp pzaj with its
+exact filename version and body recorded atomically in the migration ledger.
+Matching prerequisites 20261031081117 and 20261031084701 were applied by their
+owner; do not reapply them.
+
+Aural feature preview uses fjagcdzwvwfdufefpglm, created without production data.
+It has baseline 20261031013734, storage 20261031013913, outbox 20261031081728,
+and the separately owned video spike 20261031082242. Original Aural
+knbbkrfatygusjqjcjcy is reserved for production and is out of scope.
+Only fictional fixtures are used for webhook testing.
 
 ## Verification boundary
 
-Focused local signature/rotation/schema/stream-size and delivery retry/egress
-policy tests pass. Migration replay, full type/lint/test checks belong to remote
+Focused local signature/rotation/schema/stream-size, durable receiver,
+lease/revision worker, and delivery retry/egress policy tests pass.
+The expanded Ramp inbox suite passed 25 rollback-only database assertions. Migration replay, full type/lint/test checks belong to remote
 CI. Live transport, outage/restart, inbox API timeout, missed-event repair,
 Sentry failure/recovery and role-based preview readback are not yet proven.
 Video-ready/deletion acceptance is blocked on the separate video lifecycle and
