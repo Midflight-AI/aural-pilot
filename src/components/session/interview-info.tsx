@@ -61,7 +61,7 @@ export function InterviewInfo({ interviewTitle, interviewDescription, questionCo
 
           <Card className={`${styles.panel} mt-4`}>
             <CardContent className="space-y-3 p-4 sm:p-6">
-              <h3 className="font-semibold">Integrity Notices</h3>
+              <h2 className="font-semibold">Integrity Notices</h2>
               {antiCheatingEnabled ? (
                 <>
                   <div className="rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">

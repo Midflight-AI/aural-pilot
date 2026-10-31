@@ -1,6 +1,7 @@
 /* Ramp Remote tokens from ramp-remote globals.css; HSL channels match Aural's
    Tailwind 3 contract. Scoped to this screen so admin and later steps stay intact. */
 .surface {
+  --font-heading: var(--font-body);
   --background: 40 43% 95%;
   --foreground: 224 25% 15%;
   --card: 0 0% 100%;
