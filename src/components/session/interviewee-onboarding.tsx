@@ -889,7 +889,7 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
     } catch (err) {
       abortRef.current = null;
       if (err instanceof DOMException && err.name === "AbortError") return;
-      setError("Unable to play Seed TTS. Please retry the microphone test.");
+      setError("Unable to play the test audio. Please retry the microphone test.");
       setPhase("idle");
     }
   }, [getSpeechSynthesisApi, language, startListeningAfterPlayback, stopTtsPlayback]);

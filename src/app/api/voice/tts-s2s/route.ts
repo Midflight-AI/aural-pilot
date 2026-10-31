@@ -1,3 +1,4 @@
+import { synthesizeOpenAiSpeech } from "@/lib/voice/openai-tts";
 import { isAbortError } from "@/lib/abort-error";
 import { createLogger } from "@/lib/logger";
 import { NextResponse } from "next/server";
@@ -142,6 +143,26 @@ export async function POST(req: Request) {
 
   if (!rawText) {
     return NextResponse.json({ error: "Missing text" }, { status: 400 });
+  }
+
+  if (rawText.length > 4096) {
+    return NextResponse.json({ error: "Text is too long" }, { status: 400 });
+  }
+
+  if (process.env.OPENAI_TTS_DEPLOYMENT) {
+    try {
+      const format = resolveClientFormat(req);
+      const audio = await synthesizeOpenAiSpeech(rawText, format === "pcm_f32le" ? "pcm" : format, req.signal);
+      const output = format === "pcm_f32le" ? s16leToF32le(Buffer.from(audio)) : audio;
+      return new NextResponse(toArrayBuffer(output), {
+        headers: {
+          "Content-Type": format === "pcm_f32le" ? "application/octet-stream" : format === "mp3" ? "audio/mpeg" : "audio/wav",
+          "Cache-Control": "no-store",
+        },
+      });
+    } catch {
+      return NextResponse.json({ error: "Speech synthesis unavailable" }, { status: 502 });
+    }
   }
 
   if (
