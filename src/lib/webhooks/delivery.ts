@@ -34,7 +34,7 @@ export async function sendDelivery(url: URL, body: string, headers: Record<strin
   const addresses = await resolve4(url.hostname);
   if (!addresses.length || addresses.some((ip) => !publicIPv4(ip))) throw new Error('DESTINATION_REJECTED');
   return new Promise<{status:number;retryAfter?:string}>((resolve,reject) => {
-    const req = request(url, {method:'POST',headers,lookup:(_host,_options,callback) => callback(null,addresses[0],4)}, (res) => {
+    const req = request(url, {method:'POST',headers,family:4,lookup:(_host,_options,callback) => callback(null,addresses[0],4)}, (res) => {
       res.resume();
       resolve({status:res.statusCode ?? 500,retryAfter:typeof res.headers['retry-after']==='string' ? res.headers['retry-after'] : undefined});
     });
