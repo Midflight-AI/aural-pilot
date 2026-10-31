@@ -46,7 +46,7 @@ test("real media routers merge checkpoints, preserve finals, recover storage and
     const { sessionRouter } = await import("../src/server/routers/session");
     const { analysisRouter } = await import("../src/server/routers/analysis");
     const supabase = createClient(process.env.SUPABASE_URL!, "test-key");
-    const ctx = { supabase, user: { id: "user" } as User };
+    const ctx = { candidate: null, supabase, user: { id: "user" } as User };
     const caller = sessionRouter.createCaller(ctx);
     const analysis = analysisRouter.createCaller(ctx);
     await t.test("empty and later checkpoints do not erase previous captures", async () => {
