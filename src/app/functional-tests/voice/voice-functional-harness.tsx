@@ -284,12 +284,21 @@ function installFunctionalRelayMocks(scenario: FunctionalScenario) {
     });
   }
   navigator.mediaDevices.getUserMedia = async () => {
-    if (scenario === functionalScenarios["listening-feedback"]) {
-      // A real silent audio track exercises microphone state without accessing
-      // the user's microphone or sending audio to a provider.
+    if (scenario === functionalScenarios["listening-feedback"] ||
+        scenario === functionalScenarios["farewell-complete"]) {
+      // Use a real synthetic track without accessing a person's microphone.
+      // Completion must exercise MediaRecorder and upload, not an empty stream.
       const audio = new AudioContext();
+      const destination = audio.createMediaStreamDestination();
+      if (scenario === functionalScenarios["farewell-complete"]) {
+        const tone = audio.createOscillator();
+        tone.frequency.value = 440;
+        tone.connect(destination);
+        tone.start();
+      }
+      await audio.resume();
       window.addEventListener("pagehide", () => { void audio.close(); }, { once: true });
-      return audio.createMediaStreamDestination().stream;
+      return destination.stream;
     }
     return ({ getTracks: () => [] }) as unknown as MediaStream;
   };
