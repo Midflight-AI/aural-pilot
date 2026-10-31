@@ -547,6 +547,24 @@ test("voice completion shows the farewell, waits for final save, and only then n
   const page = await context.newPage();
   let resolveSave: (() => void) | null = null;
   const saveBodies: unknown[] = [];
+  const recordingBodies: Array<Record<string, unknown>> = [];
+  const audioUrl = "https://media.example.invalid/functional-recording.webm";
+
+  // Audio-only sessions now persist their recording before the final transcript.
+  // Mock both storage boundaries so this fixture never calls the placeholder DB.
+  await page.route("**/api/session/upload", async (route: Route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ url: audioUrl, path: "functional-recording.webm" }),
+    });
+  });
+  await page.route("**/api/trpc/session.saveRecording", async (route: Route) => {
+    const payload = JSON.parse(route.request().postData() || "{}").json;
+    recordingBodies.push(payload);
+    assert.equal(saveBodies.length, 0, "Recording metadata must precede final transcript save");
+    await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  });
 
   await page.route("**/api/voice/save", async (route: Route) => {
     saveBodies.push(JSON.parse(route.request().postData() || "{}"));
@@ -593,6 +611,9 @@ test("voice completion shows the farewell, waits for final save, and only then n
 
   const [savePayload] = saveBodies as Array<Record<string, unknown>>;
   assert.equal(savePayload.complete, true);
+  assert.equal(recordingBodies.length, 1, "Audio-only recording metadata is saved once");
+  assert.equal(recordingBodies[0].audioRecordingUrl, audioUrl);
+  assert.ok(Number(recordingBodies[0].audioDuration) > 0);
   assert.equal(
     await page.getByTestId("parent-complete").textContent(),
     "false",
