@@ -8,6 +8,7 @@ import {
 
 const ENV_KEYS = [
   "OPENAI_API_KEY",
+  "OPENAI_GENERATOR_MODEL",
   "GEMINI_API_KEY",
   "KIMI_API_KEY",
   "MINIMAX_API_KEY",
@@ -87,4 +88,11 @@ test("getGeneratorModelChain uses MiniMax when only MiniMax is configured", () =
       assert.equal(resolveGeneratorModel(), "MiniMax-M2.1-lightning");
     },
   );
+});
+
+ test("generator uses the configured Azure deployment without trying unavailable default", () => {
+  withEnv({ OPENAI_API_KEY: "test", OPENAI_GENERATOR_MODEL: "gpt-4o" }, () => {
+    assert.deepEqual(getGeneratorModelChain(), ["gpt-4o"]);
+    assert.equal(resolveGeneratorModel(), "gpt-4o");
+  });
 });

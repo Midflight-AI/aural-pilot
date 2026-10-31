@@ -651,10 +651,11 @@ export function VoiceInterface({
     window.addEventListener("pointerup", onUp);
   }, []);
 
-  // ── Recording hook (video mode) ──────────────────────────────────
+  // ── Audio recording with optional visual capture ──────────────────────────────────
   const recording = useInterviewRecording({
     sessionId,
-    enabled: videoMode,
+    enabled: true,
+    captureVisuals: videoMode,
   });
 
   const cameraPipRef = useRef<HTMLVideoElement>(null);
@@ -730,8 +731,8 @@ export function VoiceInterface({
     onTranscript: handleTranscript,
     onAIResponse: handleAIResponse,
     onError: handleError,
-    onTtsChunk: videoMode ? recording.addTtsChunk : undefined,
-    onInterrupt: videoMode ? recording.cancelTts : undefined,
+    onTtsChunk: recording.addTtsChunk,
+    onInterrupt: recording.cancelTts,
     onWhiteboardSnapshotRequest: exportWhiteboardPngForRelay,
   });
 
@@ -751,23 +752,23 @@ export function VoiceInterface({
     }
   }, [error]);
 
-  // ── Start recording when voice connects (video mode) ───────────
+  // ── Start audio recording when voice connects ───────────
   const recordingStartedRef = useRef(false);
   useEffect(() => {
-    if (!videoMode || !voice.isConnected || recordingStartedRef.current) return;
+    if (!voice.isConnected || recordingStartedRef.current) return;
     recordingStartedRef.current = true;
     const micStream = voice.mediaStreamRef.current;
     recording.start(micStream ?? undefined);
-  }, [videoMode, voice.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [voice.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Attach mic stream to recording when it becomes available
   useEffect(() => {
-    if (!videoMode || !voice.isListening) return;
+    if (!voice.isListening) return;
     const micStream = voice.mediaStreamRef.current;
     if (micStream) {
       recording.attachMicStream(micStream);
     }
-  }, [videoMode, voice.isListening]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [voice.isListening]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Countdown timer (starts when voice connects) ────────────────
   useEffect(() => {
@@ -1274,7 +1275,7 @@ export function VoiceInterface({
       ]);
 
       try {
-        if (videoMode && recording.isRecording) {
+        if (recording.isRecording) {
           const saveRecordingMetadata = async (metadata: Record<string, unknown>) => {
             const response = await fetch("/api/trpc/session.saveRecording", {
               method: "POST",
@@ -1321,7 +1322,7 @@ export function VoiceInterface({
     } finally {
       onComplete?.(normalizedReason);
     }
-  }, [saveAllDrawings, saveAllCodeSnippets, videoMode, recording, sessionId, voice, onComplete]);
+  }, [saveAllDrawings, saveAllCodeSnippets, recording, sessionId, voice, onComplete]);
 
   useEffect(() => {
     handleEndInterviewRef.current = handleEndInterview;
@@ -1661,7 +1662,7 @@ export function VoiceInterface({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {videoMode && recording.isRecording && (
+            {recording.isRecording && (
               <div className="flex items-center gap-1.5 rounded-full bg-destructive/10 px-2.5 py-0.5">
                 <div className="h-2 w-2 animate-pulse rounded-full bg-destructive" />
                 <span className="text-[10px] font-medium text-destructive">REC</span>

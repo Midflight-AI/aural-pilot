@@ -62,6 +62,7 @@ interface IntervieweeOnboardingProps {
   language?: string;
   antiCheatingEnabled?: boolean;
   voiceEnabled?: boolean;
+  videoEnabled?: boolean;
   chatEnabled?: boolean;
   aiName?: string;
   questionTypes?: string[];
@@ -889,7 +890,7 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
     } catch (err) {
       abortRef.current = null;
       if (err instanceof DOMException && err.name === "AbortError") return;
-      setError("Unable to play Seed TTS. Please retry the microphone test.");
+      setError("Unable to play the test audio. Please retry the microphone test.");
       setPhase("idle");
     }
   }, [getSpeechSynthesisApi, language, startListeningAfterPlayback, stopTtsPlayback]);
@@ -1295,6 +1296,7 @@ export function IntervieweeOnboarding({
   language,
   antiCheatingEnabled = false,
   voiceEnabled = false,
+  videoEnabled = false,
   chatEnabled = false,
   aiName = "AI Interviewer",
   questionTypes = [],
@@ -1308,7 +1310,9 @@ export function IntervieweeOnboarding({
   const [screenDone, setScreenDone] = useState(false);
   const [starting, setStarting] = useState(false);
 
-  const allChecksDone = cameraDone && micDone && screenDone;
+  const needsVisualChecks = videoEnabled || antiCheatingEnabled;
+  const needsMicCheck = voiceEnabled || needsVisualChecks;
+  const allChecksDone = (!needsVisualChecks || (cameraDone && screenDone)) && (!needsMicCheck || micDone);
 
   const handleComplete = useCallback(() => {
     setStarting(true);
@@ -1416,15 +1420,10 @@ export function IntervieweeOnboarding({
                     web page with ads, message pop-ups. Please do not leave the
                     interview page during the whole process.
                   </li>
-                  <li>
-                    This interview requires a camera to collect your registration
-                    photo and capture your behavior. All photos are privacy
-                    protected.
-                  </li>
-                  <li>
-                    The interview will screen capture throughout. Screen capture
-                    requires authorization.
-                  </li>
+                  {needsVisualChecks && <>
+                    <li>This interview uses camera snapshots and screen capture, which require authorization.</li>
+                  </>}
+                  {voiceEnabled && <li>This interview records audio for transcription and review. Microphone access is required.</li>}
                 </ol>
               )}
             </CardContent>
@@ -1502,9 +1501,9 @@ export function IntervieweeOnboarding({
       {header}
       <StepIndicator current="checklist" />
       <div className="mx-auto w-full max-w-2xl flex-1 space-y-4 px-4 pb-8">
-        <CameraCheck done={cameraDone} onDone={() => setCameraDone(true)} allowSkip={!antiCheatingEnabled} />
-        <MicCheck done={micDone} onDone={() => setMicDone(true)} language={language} allowSkip={!antiCheatingEnabled} />
-        <ScreenCheck done={screenDone} onDone={() => setScreenDone(true)} allowSkip={!antiCheatingEnabled} />
+        {needsVisualChecks && <CameraCheck done={cameraDone} onDone={() => setCameraDone(true)} allowSkip={!antiCheatingEnabled} />}
+        {needsMicCheck && <MicCheck done={micDone} onDone={() => setMicDone(true)} language={language} allowSkip={!antiCheatingEnabled && !voiceEnabled} />}
+        {needsVisualChecks && <ScreenCheck done={screenDone} onDone={() => setScreenDone(true)} allowSkip={!antiCheatingEnabled} />}
 
         <div className="flex items-center justify-center gap-3 pt-4">
           <Button variant="outline" onClick={() => setStep("info")}>

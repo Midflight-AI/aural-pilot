@@ -104,6 +104,7 @@ export default function SlugSessionPage() {
         timeLimitMinutes={interview.data.timeLimitMinutes}
         language={interview.data.language}
         antiCheatingEnabled={!!interview.data.antiCheatingEnabled}
+        videoEnabled={!!interview.data.videoEnabled}
         voiceEnabled={!!interview.data.voiceEnabled}
         chatEnabled={!!interview.data.chatEnabled}
         aiName={interview.data.aiName}
