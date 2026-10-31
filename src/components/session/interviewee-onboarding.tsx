@@ -1607,12 +1607,12 @@ export function IntervieweeOnboarding({
         {needsVisualChecks && <ScreenCheck done={screenDone} onDone={() => setScreenDone(true)} allowSkip={!antiCheatingEnabled} />}
 
         <div className="flex items-center justify-center gap-3 pt-4">
-          <Button variant="outline" onClick={() => setStep("info")}>
+          <Button variant="outline" onClick={() => { setRecordWebcam(false); setCheckingCamera(false); setStep("info"); }}>
             Back
           </Button>
           <Button disabled={!allChecksDone} onClick={() => {
             if (voiceEnabled) setStep("howItWorks");
-            else onComplete();
+            else handleComplete();
           }}>
             Next
           </Button>
