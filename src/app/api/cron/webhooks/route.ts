@@ -1,3 +1,4 @@
+import { getVercelOidcToken } from "@vercel/oidc";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { deliveryHeaders, deliveryOutcome, destinationUrl, sendDelivery, type Destination } from "@/lib/webhooks/delivery";
@@ -26,7 +27,9 @@ export async function GET(request: Request) {
         let url:URL;
         try {url=destinationUrl(destination.url,allowlist);} catch {configurationFailure=true; throw new Error('CONFIGURATION');}
         const body=JSON.stringify(row.payload);
-        const response=await sendDelivery(url,body,deliveryHeaders(body,row.event_id,destination));
+        const headers: Record<string,string> = deliveryHeaders(body,row.event_id,destination);
+        if(destination.vercelTrustedSource) headers["x-vercel-trusted-oidc-idp-token"] = await getVercelOidcToken();
+        const response=await sendDelivery(url,body,headers);
         status=response.status;retryAfter=response.retryAfter;
       } catch { /* Never log upstream content, credentials or transport URLs. */ }
       const outcome=configurationFailure ? {state:'dead',code:'CONFIGURATION',delay:86400} : deliveryOutcome(status,row.attempts,retryAfter);

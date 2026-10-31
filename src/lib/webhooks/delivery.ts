@@ -3,7 +3,7 @@ import { resolve4 } from "node:dns/promises";
 import { request } from "node:https";
 import { isIP } from "node:net";
 
-export type Destination = { id: string; projectId: string; url: string; keyId: string; secret: string; expiresAt: string };
+export type Destination = { id: string; projectId: string; url: string; keyId: string; secret: string; expiresAt: string; vercelTrustedSource?: boolean };
 export function publicIPv4(address: string) {
   if (isIP(address) !== 4) return false;
   const [a,b,c] = address.split('.').map(Number);

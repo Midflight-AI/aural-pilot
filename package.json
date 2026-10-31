@@ -58,6 +58,7 @@
     "@trpc/next": "^10.45.4",
     "@trpc/react-query": "^10.45.4",
     "@trpc/server": "^10.45.4",
+    "@vercel/oidc": "4.0.5",
     "bufferutil": "^4.1.0",
     "canvas-confetti": "^1.9.4",
     "cheerio": "^1.2.0",
@@ -124,6 +125,9 @@
     "minimatch": "$minimatch",
     "@typescript-eslint/typescript-estree": {
       "minimatch": "11.0.3"
+    },
+    "@vercel/cli-config": {
+      "zod": "4.6.7"
     }
   }
 }
