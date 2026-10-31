@@ -588,6 +588,8 @@ test("voice completion shows the farewell, waits for final save, and only then n
     "Expected functional voice harness mocks to be ready",
   );
   await page.getByRole("button", { name: "Start Voice Interview" }).click();
+  await page.locator('[data-tour="voice-mic"] button').click();
+  await page.locator('[data-tour="voice-mic"]').getByText("Mute", { exact: true }).waitFor();
 
   await delay(1_500);
   const earlyBodyText = (await page.locator("body").textContent()) ?? "";
