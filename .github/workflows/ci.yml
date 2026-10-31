@@ -11,7 +11,8 @@ permissions:
 
 jobs:
   lint-and-test:
-    runs-on: ubuntu-latest
+    # Pin the OS supported by the locked Playwright browser build.
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
