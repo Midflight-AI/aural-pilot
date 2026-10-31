@@ -89,3 +89,13 @@ insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) v
  ('video-spike-source','video-spike-source',false,20971520,array['application/octet-stream']),
  ('video-spike-output','video-spike-output',false,536870912,array['video/webm'])
  on conflict(id) do nothing;
+-- Explicit operator retry preserves the sealed manifest and logical recording ID.
+create function public.video_spike_retry(p_id uuid)
+returns boolean language plpgsql set search_path='' as $$
+begin
+ update public.video_spike_recordings set state='processing',failure_code=null,lease_token=null,lease_until=null,revision=revision+1
+ where id=p_id and state='failed' and manifest_hash is not null and expires_at>now();
+ return found;
+end; $$;
+revoke all on function public.video_spike_retry(uuid) from public,anon,authenticated;
+grant execute on function public.video_spike_retry(uuid) to service_role;

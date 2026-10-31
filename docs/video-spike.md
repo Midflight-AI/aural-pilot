@@ -51,7 +51,8 @@ for the Aural video preview, and `AURAL_VIDEO_SPIKE_ENABLED=true`. Never reuse t
 old deployment-specific scheduler grant or alter the baseline production settings.
 
 Run `scripts/video-spike-worker.ts <recording UUID>` with the isolated Aural env and
-ffmpeg/ffprobe available. It is a manual spike processor, not an automatic service.
+ffmpeg/ffprobe available. Pass `--retry` to requeue a failed sealed asset without
+recapture. It is a manual spike processor, not an automatic service.
 The source bucket accepts immutable 20 MiB objects. Supabase signed upload grants
 last two hours (provider API limit), not five minutes; finalization/expiry gates
 still deny attachment of stale uploads. Playback grants last five minutes.
@@ -63,8 +64,11 @@ acknowledgement, recovery from stored manifest, backlog cutoff, manifest corrupt
 local storage failure, oversized callback and production-database refusal.
 A Chromium synthetic probe assembled three chunks after forced upload failures,
 left zero pending chunks, and produced a 14.969-second VP8/Opus asset at 640x480.
-ffmpeg remux succeeded. Spectral inspection found both generated 440 Hz and 880 Hz
-sources; this is not human microphone/AI interview proof.
+ffmpeg remux succeeded. A second Chromium probe used the actual
+`useInterviewRecording` mixing hook: 46.681 seconds, ten chunks, a forced 30-second
+upload outage, 19 attempts, zero pending chunks. Spectral inspection found both
+generated 440 Hz and 880 Hz sources (about 1645 and 1635 magnitude versus 0.24
+at a 600 Hz control); this is not human microphone/AI interview proof.
 
 Not yet established: real webcam/microphone/AI sample in deployed Ramp; 5/15/30-minute
 runs; measured drift; all-browser compatibility; camera reconnect; browser crash

@@ -15,6 +15,9 @@ async function main() {
  if(!url || !isolatedVideoDatabase(url,process.env.AURAL_VIDEO_SPIKE_DATABASE_REF) || process.env.AURAL_VIDEO_SPIKE_ENABLED!=="true") throw new Error("isolated_preview_required");
  const id=process.argv[2];if(!id || !/^[a-f0-9-]{36}$/.test(id)) throw new Error("recording_id_required");
  const db=createClient(url,process.env.SUPABASE_SERVICE_ROLE_KEY!,{auth:{persistSession:false,autoRefreshToken:false}});
+ if(process.argv.includes("--retry")) {
+  const {error}=await db.rpc("video_spike_retry",{p_id:id});if(error) throw new Error("retry_not_accepted");
+ }
  const token=randomUUID();
  const {data:claimed,error:claimError}=await db.rpc("video_spike_claim",{p_id:id,p_token:token});
  if(claimError || !claimed) throw new Error("recording_not_claimed");
