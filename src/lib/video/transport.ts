@@ -30,6 +30,7 @@ export interface VideoTransport {
 }
 export const BACKLOG_BYTES = 20 * 1024 * 1024;
 export const BACKLOG_MS = 60_000;
+export const MAX_RECORDING_BYTES = 400 * 1024 * 1024; // Fits Vercel scratch space with output/index headroom.
 export const MAX_CHUNKS = 400; // 30 minute pilot at a five-second target, with headroom.
 
 export function validateManifest(manifest: VideoManifest): void {
@@ -43,7 +44,7 @@ export function validateManifest(manifest: VideoManifest): void {
       throw new Error("invalid_chunk");
     }
     totalBytes += chunk.bytes;
-    if (totalBytes > 512 * 1024 * 1024) throw new Error("recording_too_large");
+    if (totalBytes > MAX_RECORDING_BYTES) throw new Error("recording_too_large");
     previousEnd = chunk.endMs;
   }
 }
@@ -79,7 +80,7 @@ export class VideoUploadQueue {
         sequence: this.manifest.chunks.length, bytes: blob.size, endMs,
         sha256: Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join(""), blob,
       };
-      if (chunk.bytes > BACKLOG_BYTES || chunk.sequence >= MAX_CHUNKS) {
+      if (chunk.bytes > BACKLOG_BYTES || chunk.sequence >= MAX_CHUNKS || this.manifest.chunks.reduce((total, item) => total + item.bytes, 0) + chunk.bytes > MAX_RECORDING_BYTES) {
         this.manifest.partial = true;
         this.manifest.failureCode = "backlog_limit";
         this.onLimit("backlog_limit");

@@ -7,5 +7,6 @@ RUN npm ci --ignore-scripts && npm cache clean --force
 COPY src/lib/video ./src/lib/video
 COPY scripts/video-spike-worker.ts ./scripts/video-spike-worker.ts
 COPY tsconfig.json ./
+ENV FFMPEG_PATH=/usr/bin/ffmpeg FFPROBE_PATH=/usr/bin/ffprobe
 USER node
 CMD ["node", "--import", "tsx", "scripts/video-spike-worker.ts"]

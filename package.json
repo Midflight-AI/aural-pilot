@@ -27,7 +27,8 @@
     "dev:voice": "npx tsx server/voice-relay.ts",
     "dev:openai-voice": "npx tsx server/openai-voice-relay.ts",
     "dev:local": "node scripts/dev-local.mjs",
-    "audit:dependencies": "npm audit --registry=https://registry.npmjs.org"
+    "audit:dependencies": "npm audit --registry=https://registry.npmjs.org",
+    "prebuild": "node node_modules/ffmpeg-static/install.js"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
@@ -65,6 +66,8 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "dotenv": "^17.3.1",
+    "ffmpeg-static": "5.3.0",
+    "ffprobe-static": "3.1.0",
     "fix-webm-duration": "^1.0.6",
     "html2canvas-pro": "^1.6.7",
     "jose": "^6.2.0",

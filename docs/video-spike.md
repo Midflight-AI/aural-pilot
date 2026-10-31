@@ -20,7 +20,7 @@ into the same container.
   manifest recovered after reload is always partial. An undelivered recorder tail
   cannot be recovered. Browser storage is best effort, not crash-proof.
 - Backlog threshold: 60 seconds or 20 MiB; oversized callback and queued-write
-  buffers are bounded. 30-minute capture cutoff. Final manifest limited to 512 MiB.
+  buffers are bounded. 30-minute capture cutoff. Final manifest limited to 400 MiB.
 - Finalization checks all reserved/acknowledged chunks under a database lock and
   rejects conflicting manifests. It sets processing, never ready.
 - Scheduled worker claims finalized recordings, verifies hashes, assembles only this container, remuxes
@@ -60,21 +60,29 @@ ffmpeg/ffprobe available and `AURAL_VIDEO_ENVIRONMENT=preview`. Pass `--retry`
 to requeue a failed sealed asset without recapture. With no recording argument,
 the worker drains the durable queue (up to three assets per invocation).
 
-Build `deploy/video-worker.Dockerfile` remotely and run a separate Container Apps
-scheduled job every minute, with no ingress, a 20-minute execution timeout and
-platform retry limit zero. Database claims cap concurrent work at two recordings.
-A heartbeat renews a ten-minute lease; a crashed worker can be replaced after expiry.
-Transient processing errors retry after 60 then 240 seconds, at most three attempts.
-Corrupt media is terminal. An operator can explicitly requeue a sealed failure.
-Use the existing managed identity for ACR pull; database credentials belong in
-job secrets, never the image. The preview job must point only at the isolated DB.
+The Vercel finalization route schedules processing with Next.js `after`, so the
+candidate receives the saved-upload acknowledgement without waiting for stitching.
+`/api/internal/video/process` is authenticated with `CRON_SECRET`; `vercel.json`
+schedules it every minute as a recovery sweep. Vercel cron runs in production only;
+preview acceptance invokes the same authenticated endpoint explicitly and tests the
+immediate finalization trigger. Preview credentials remain branch-scoped.
 
-Production release order: apply reviewed migrations, deploy the immutable worker
-image with production-specific secrets and `AURAL_VIDEO_ENVIRONMENT=production`,
-then enable the matching Aural and Ramp flags and verify a real saved recording
-through authenticated recruiter playback. Keep flags off until these gates pass.
-Watch failed job executions and queue rows with expired leases or exhausted
-attempts; logs contain only recording IDs, safe error codes and processing counts.
+The Node function has an 800-second limit and a 740-second work deadline. Verified
+chunks stream into FFmpeg; only the seekable output occupies scratch disk. Capture
+is bounded to 400 MiB and free disk is checked before processing. Packaged Linux
+FFmpeg/ffprobe binaries are included explicitly in function tracing. A per-process
+resource guard prevents shared scratch-disk contention; database claims cap global
+concurrency at two recordings. A heartbeat renews a ten-minute lease; a crashed
+processor can be replaced after expiry. Transient failures retry after 60 then 240
+seconds, at most three attempts. Corrupt media is terminal. Logs report safe phase
+timings, recording IDs and error codes, never media or credentials.
+
+Production release order: apply reviewed migrations, configure production-specific
+Supabase credentials and `CRON_SECRET`, deploy the Vercel functions and cron, then
+enable the matching Aural and Ramp flags and verify authenticated recruiter playback.
+Keep flags off until these gates pass. Monitor failed/exhausted processing rows and
+expired leases. The standalone script/Dockerfile remain an operator fallback; no
+Azure scheduled resource is required.
 No worker path deletes source or output objects.
 The source bucket accepts immutable 20 MiB objects. Supabase signed upload grants
 last two hours (provider API limit), not five minutes; finalization/deletion gates
