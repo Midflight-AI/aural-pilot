@@ -53,3 +53,15 @@ The current pilot voice model is `gpt-realtime-mini` 2025-12-15 because the subs
 - The moderate minimatch audit failure remains a release blocker. The audit is unchanged. No merge or public candidate rollout is authorized by a successful preview build alone.
 
 Validation update: commit `23413d22c27bc2421bdd25377c8cb2cbcac0c92c` passed Vercel build and GitHub relay build/runtime/configurable-generator tests (run 41158068138). Full CI run 41158068088 still stops at the unchanged dependency audit (16 moderate findings through minimatch). Direct Azure realtime WebSocket handshake with the deployment returned `session.created`; no candidate audio was transmitted. Azure Container Apps environment still returned Waiting with no deploymentErrors at the last check. This checkpoint is not end-to-end interview acceptance.
+
+Auth redirect correction: the dedicated Supabase Site URL was left at localhost, causing confirmation links to land on localhost after successfully verifying the email. Changed it to the protected pilot preview `/login` URL. Josh's email confirmation was verified in auth.users; no password or auth code was read or changed. Future production-domain setup must update this URL before enrollment. Aural has no code-exchange callback route; confirmation is followed by ordinary password sign-in.
+
+## Relay running — 31 October 2026
+
+Environment `aural-pilot-env` finished provisioning. Container App `aural-relay` is healthy with 0.25 CPU / 0.5 GiB, scale 0–1, managed-identity ACR pull, TLS-only HTTP ingress on target port 8767. Image digest remains the verified 452077e relay artifact (later changes only affect web generation/docs). Runtime Azure key and Entra client secret are configured as Container Apps secrets; no values are in Git.
+
+Endpoint: `https://aural-relay.purpleflower-a0eeeb4d.eastus2.azurecontainerapps.io`. Microsoft Entra authentication is enabled, unauthenticated action Return401, tenant-specific issuer, assignment required with only Josh assigned. Anonymous HTTP and WebSocket checks both returned 401. Josh explicitly approved personal profile/sign-in consent; browser showed successful sign-in. Client credential expires 31 January 2027. Cross-site authenticated WebSocket compatibility still requires the actual mic test.
+
+Vercel preview redeployment `dpl_DENfmHqKcoHHg2nzMBhX8qk4ekXx` is READY at commit 23413d2 with the new public relay URL and `NEXT_PUBLIC_VOICE_RELAY_PRIMARY=openai`. The protected branch alias remains the user-facing pilot URL.
+
+Aural UI generated and saved `Ramp Internal Audio Pilot` (interview ID `eaa9dd82-745c-4369-b247-8e254ec4ff73`), two fictional customer-support questions, five minutes, invite-only, voice/chat enabled, video and anti-cheating disabled. Created name-only `Internal Pilot Tester` session; no email sent. Invite token intentionally excluded from this runbook. User must open Copy invite link in Aural and perform the mic/voice test. No transcript, completed report or recording playback has yet been verified.
