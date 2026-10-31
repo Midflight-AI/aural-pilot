@@ -6,7 +6,7 @@ import { supabaseAdmin as db } from "@/lib/supabase/admin";
 import { acknowledgeChunk,canonicalManifest,chunkDescriptor,json,jsonBody,ownedRecording,registerChunk,responseError,SOURCE_BUCKET,sourcePath,VideoError } from "@/lib/video/server";
 export async function POST(request:Request,{params}:{params:Promise<{id:string}>}) {
  try {
-  const {id}=await params; const row=await ownedRecording(id); const body=await jsonBody(request);
+  const {id}=await params; const row=await ownedRecording(id,request); const body=await jsonBody(request);
   if(body.action==="upload" || body.action==="acknowledge") {
    const c=chunkDescriptor(body.chunk);
    const acknowledged=await registerChunk(id,c,false);

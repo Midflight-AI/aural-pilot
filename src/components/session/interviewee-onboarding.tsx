@@ -1,4 +1,5 @@
 "use client";
+import { videoRequestHeaders } from "@/lib/video/client";
 
 import { PreparingScreen } from "@/components/session/preparing-screen";
 import {
@@ -1403,7 +1404,7 @@ export function IntervieweeOnboarding({
     if (!sessionId || !voiceEnabled) return;
     const controller = new AbortController();
     fetch(`/api/session/video?sessionId=${encodeURIComponent(sessionId)}`, {
-      cache: "no-store", signal: controller.signal,
+      cache: "no-store", signal: controller.signal, headers: videoRequestHeaders(),
     }).then(response => {
       if (response.ok && !controller.signal.aborted) setVideoAvailable(true);
     }).catch(() => {});

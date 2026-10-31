@@ -135,3 +135,19 @@ starts only after the voice relay connects. Failed initial connections release
 the camera and retain the empty attempt identity for retry, including after reload.
 Browser regressions cover denial, recording consent, upload recovery and failed
 connection retry. The protected relay also needs a current Microsoft session.
+
+2026-10-31 Vercel acceptance: the real 100.353-second recording (17 chunks)
+processed on its first attempt in 14,898 ms: download/remux 3,898 ms, full decode
+validation 6,639 ms, output upload 3,041 ms. End-to-end HTTP time was 17.759 s.
+The authenticated session-video API returned ready with no retention expiry.
+A separate 46.681-second synthetic partial recording finalized through the deployed
+HTTP endpoint and reached partial automatically on attempt one, proving the after
+trigger without a manual processor call. These are preview measurements, not an SLA.
+
+Candidate uploads use the invitation token already present in the session URL,
+validated server-side against the exact candidate/session/interview binding on
+every request. The token is sent only to same-origin video control endpoints;
+storage PUTs and reviewer playback do not receive it. Revoked links are denied.
+Staff testing retains authenticated organization/project authorization. The existing
+interview owner is the storage custodian; invitation access does not grant recruiter
+playback or access to another candidate's recording.

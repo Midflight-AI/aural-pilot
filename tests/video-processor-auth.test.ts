@@ -13,3 +13,10 @@ test("processor refuses absent, wrong and unconfigured scheduler credentials", a
   assert.equal((await GET(new Request("http://localhost/api/internal/video/process",{headers:{authorization:"Bearer undefined"}}))).status,401);
  } finally {if(prior===undefined)delete process.env.CRON_SECRET;else process.env.CRON_SECRET=prior;}
 });
+
+// The candidate credential must remain confined to the exact invite/session page.
+import {videoRequestHeaders} from "../src/lib/video/client";
+test("video invite credentials are sent only from an exact candidate session URL",()=>{
+ assert.deepEqual(videoRequestHeaders("/i/invite/abcdefghijkl/session"),{"x-aural-video-invite":"abcdefghijkl"});
+ for(const path of ["/i/invite/abcdefghijkl","/admin/sessions/abcdefghijkl","/i/invite/short/session","/i/invite/abcdefghijkl/session/other"]){assert.deepEqual(videoRequestHeaders(path),{});}
+});

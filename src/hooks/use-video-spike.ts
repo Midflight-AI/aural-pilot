@@ -3,7 +3,7 @@ import { useCallback,useEffect,useRef,useState } from "react";
 import { canCaptureVideo,WebcamCapture,VIDEO_MIME } from "@/lib/video/capture";
 import { clearVideoManifest,recoverVideoManifests,videoStore } from "@/lib/video/store";
 import { VideoUploadQueue,type VideoManifest } from "@/lib/video/transport";
-import { videoRequest,videoTransport } from "@/lib/video/client";
+import { videoRequest,videoRequestHeaders,videoTransport } from "@/lib/video/client";
 
 export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent = false) {
  const [enabled,setEnabled]=useState(false);
@@ -18,7 +18,7 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent =
  interruptionRef.current=onInterrupted;
  useEffect(()=>{
   let cancelled=false;
-  fetch(`/api/session/video?sessionId=${encodeURIComponent(sessionId)}`,{cache:"no-store"}).then(async response=>{
+  fetch(`/api/session/video?sessionId=${encodeURIComponent(sessionId)}`,{cache:"no-store",headers:videoRequestHeaders()}).then(async response=>{
    if(!response.ok||cancelled) return;
    setEnabled(true);
    const manifests=await recoverVideoManifests(sessionId);

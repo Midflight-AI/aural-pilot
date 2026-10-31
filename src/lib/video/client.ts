@@ -1,6 +1,11 @@
 import type { VideoManifest, VideoTransport } from "./transport";
+/** The invite link is the candidate credential; never send it to storage or playback APIs. */
+export function videoRequestHeaders(pathname = typeof window === "undefined" ? "" : window.location.pathname): Record<string, string> {
+ const match = /^\/i\/invite\/([A-Za-z0-9_-]{12,128})\/session\/?$/.exec(pathname);
+ return match ? { "x-aural-video-invite": match[1] } : {};
+}
 export async function videoRequest(path: string, body: unknown) {
- const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});
+ const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json",...videoRequestHeaders()},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});
  if(!response.ok) throw new Error("video_request_failed");
  return response.json();
 }

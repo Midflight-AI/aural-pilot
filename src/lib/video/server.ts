@@ -28,13 +28,28 @@ export async function jsonBody(request: Request): Promise<Record<string, unknown
   try { const value = JSON.parse(Buffer.concat(chunks).toString()); if (!value || Array.isArray(value) || typeof value !== "object") throw new Error(); return value; }
   catch { throw new VideoError(400, "invalid_request"); }
 }
-export async function authorizeSession(sessionId: string, request?: Request) {
+export async function authorizeSession(sessionId: string, request?: Request, candidateRequest?: Request) {
   requireSpike(); uuid(sessionId);
-  const { data: session, error } = await db.from("sessions").select("id,interview:interviews!inner(projectId)").eq("id", sessionId).maybeSingle();
+  const { data: session, error } = await db.from("sessions").select("id,interviewId,interview:interviews!inner(projectId,userId)").eq("id", sessionId).maybeSingle();
   if (error) throw new VideoError(503, "session_unavailable");
   const raw = session?.interview;
   const projectId = (Array.isArray(raw) ? raw[0] : raw)?.projectId as string | undefined;
   if (!projectId) throw new VideoError(404, "session_unavailable");
+  const inviteToken = candidateRequest?.headers.get("x-aural-video-invite");
+  if (inviteToken !== null && inviteToken !== undefined) {
+    if (!/^[A-Za-z0-9_-]{12,128}$/.test(inviteToken)) throw new VideoError(403, "access_denied");
+    // A started invitation remains bound to its session for upload recovery.
+    // Revoked links fail closed; tokens are never sufficient for reviewer playback.
+    const { data: candidate, error: candidateError } = await db.from("candidates")
+      .select("*").eq("inviteToken", inviteToken).eq("sessionId", sessionId).maybeSingle();
+    if (candidateError) throw new VideoError(503, "access_unavailable");
+    if (!candidate || candidate.interviewId !== session?.interviewId) throw new VideoError(403, "access_denied");
+    const lifecycle = candidate as typeof candidate & { inviteStatus?: string };
+    if (lifecycle.inviteStatus && lifecycle.inviteStatus !== "active") throw new VideoError(403, "access_denied");
+    const custodian = (Array.isArray(raw) ? raw[0] : raw)?.userId;
+    if (!custodian) throw new VideoError(403, "access_denied");
+    return custodian;
+  }
   const { data: projectMembers, error: projectError } = await db.from("project_members").select("userId").eq("projectId",projectId);
   if (projectError) throw new VideoError(503,"access_unavailable");
   const allowed = (userId: string) => !projectMembers?.length || projectMembers.some(member => member.userId === userId);
@@ -46,19 +61,18 @@ export async function authorizeSession(sessionId: string, request?: Request) {
   const client = await createClient();
   const { data: { user }, error: authError } = await client.auth.getUser();
   if (authError || !user) throw new VideoError(401, "sign_in_required");
-  // Internal preview access requires actual organization membership AND project access.
-  // Public candidate-session authorization is deliberately outside this spike.
+  // Staff testing requires actual organization membership AND project access.
   const { data: project } = await db.from("projects").select("organizationId").eq("id", projectId).single();
   const { data: member, error: memberError } = await db.from("organization_members").select("userId").eq("workspaceId", project?.organizationId ?? "").eq("userId", user.id).maybeSingle();
   if (memberError || !member || !allowed(user.id)) throw new VideoError(403, "access_denied");
   return user.id;
 }
-export async function ownedRecording(id: string) {
+export async function ownedRecording(id: string, request?: Request) {
   requireSpike(); uuid(id);
   const { data: recording, error } = await db.from("video_spike_recordings").select("*").eq("id", id).maybeSingle();
   if (error) throw new VideoError(503, "recording_unavailable");
   if (!recording) throw new VideoError(404, "recording_unavailable");
-  const userId = await authorizeSession(recording.session_id);
+  const userId = await authorizeSession(recording.session_id, undefined, request);
   if (recording.owner_id !== userId) throw new VideoError(403, "access_denied");
   if (["deleted", "expired"].includes(recording.state)) throw new VideoError(410, "recording_closed");
   return recording;

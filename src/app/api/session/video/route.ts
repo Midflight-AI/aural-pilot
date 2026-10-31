@@ -1,13 +1,13 @@
 import { supabaseAdmin as db } from "@/lib/supabase/admin";
 import { authorizeSession,json,jsonBody,responseError,uuid,VideoError } from "@/lib/video/server";
 export async function GET(request: Request) {
- try { const sessionId=uuid(new URL(request.url).searchParams.get("sessionId")); await authorizeSession(sessionId); return json({enabled:true,consentVersion:"internal-video-spike-v1"}); }
+ try { const sessionId=uuid(new URL(request.url).searchParams.get("sessionId")); await authorizeSession(sessionId,undefined,request); return json({enabled:true,consentVersion:"internal-video-spike-v1"}); }
  catch(error) { return responseError(error); }
 }
 export async function POST(request: Request) {
  try {
   const body=await jsonBody(request); const sessionId=uuid(body.sessionId); const id=uuid(body.id);
-  const ownerId=await authorizeSession(sessionId);
+  const ownerId=await authorizeSession(sessionId,undefined,request);
   if(body.consentVersion!=="internal-video-spike-v1" || body.consent!==true) throw new VideoError(400,"consent_required");
   const {error}=await db.from("video_spike_recordings").insert({id,session_id:sessionId,owner_id:ownerId,consent_version:body.consentVersion});
   const {data:row}=await db.from("video_spike_recordings").select("id,owner_id,state").eq("session_id",sessionId).maybeSingle();
