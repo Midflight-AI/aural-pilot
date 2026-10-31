@@ -6,6 +6,7 @@ interface VoiceFunctionalPageProps {
   searchParams?: Promise<{
     language?: string | string[];
     scenario?: string | string[];
+    recordWebcam?: string;
   }>;
 }
 
@@ -26,5 +27,5 @@ export default async function VoiceFunctionalPage({
     ? scenarioParam[0]
     : scenarioParam || "default";
 
-  return <VoiceFunctionalHarness language={language} scenario={scenario} />;
+  return <VoiceFunctionalHarness language={language} scenario={scenario} recordWebcam={resolvedSearchParams?.recordWebcam === "1"} />;
 }

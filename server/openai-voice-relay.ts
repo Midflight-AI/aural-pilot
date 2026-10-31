@@ -1,3 +1,4 @@
+import { verifyRelayTicket } from "../src/lib/voice/relay-ticket";
 /**
  * Backup voice relay using Azure OpenAI Realtime API (gpt-realtime-1.5).
  *
@@ -404,7 +405,10 @@ const OPENAI_TOOLS = [{
 
 // ── Relay server ────────────────────────────────────────────────────
 
-const wss = new WebSocketServer({ port: RELAY_PORT });
+const relayAuthRequired = process.env.VOICE_RELAY_AUTH_REQUIRED === "true";
+if (relayAuthRequired && (process.env.VOICE_RELAY_AUTH_SECRET?.length ?? 0) < 32) throw new Error("relay_auth_unconfigured");
+const activeSubjects = new Map<string, number>();
+const wss = new WebSocketServer({ port: RELAY_PORT, maxPayload: 256 * 1024 });
 log.info(`OpenAI voice relay listening on ws://localhost:${RELAY_PORT}`);
 log.info(`Deployment: ${AZURE_DEPLOYMENT}, Voice: ${AZURE_VOICE}`);
 log.info(
@@ -423,19 +427,35 @@ wss.on("connection", (browserWs) => {
     browserWs.close();
   }, 10000);
 
-  const handler = (data: Buffer) => {
+  let authorizing = false;
+  const handler = async (data: Buffer) => {
+    if (authorizing) return;
     try {
       const msg = JSON.parse(data.toString());
-      if (msg.type === "mic_test") {
-        clearTimeout(timeout);
-        browserWs.removeListener("message", handler);
-        handleMicTest(browserWs);
-      } else if (msg.type === "init" && msg.context) {
-        clearTimeout(timeout);
-        browserWs.removeListener("message", handler);
-        handleInterview(browserWs, msg.context as InterviewContext);
+      if (msg.type !== "mic_test" && !(msg.type === "init" && msg.context)) return;
+      authorizing = true;
+      if (relayAuthRequired) {
+        const { ticket, ...init } = msg;
+        if (typeof ticket !== "string") throw new Error("access_denied");
+        const subject = await verifyRelayTicket(process.env.VOICE_RELAY_AUTH_SECRET, ticket, init);
+        if (browserWs.readyState !== WebSocket.OPEN) return;
+        if ((activeSubjects.get(subject) ?? 0) >= 2) throw new Error("session_busy");
+        activeSubjects.set(subject, (activeSubjects.get(subject) ?? 0) + 1);
+        const lifetime = setTimeout(() => browserWs.close(1000, "Session time limit"), msg.type === "mic_test" ? 120_000 : 31 * 60_000);
+        browserWs.once("close", () => {
+          clearTimeout(lifetime);
+          const count = (activeSubjects.get(subject) ?? 1) - 1;
+          if (count) activeSubjects.set(subject, count); else activeSubjects.delete(subject);
+        });
       }
-    } catch { /* not JSON */ }
+      clearTimeout(timeout);
+      browserWs.removeListener("message", handler);
+      if (msg.type === "mic_test") void handleMicTest(browserWs);
+      else void handleInterview(browserWs, msg.context as InterviewContext);
+    } catch {
+      clearTimeout(timeout);
+      browserWs.close(1008, "Voice access could not be verified");
+    }
   };
   browserWs.on("message", handler);
 });

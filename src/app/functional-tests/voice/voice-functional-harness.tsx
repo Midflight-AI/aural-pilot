@@ -1,5 +1,7 @@
 "use client";
 
+import { RecordingFunctionalHarness } from "./recording-functional-harness";
+import { RecordingCameraCheck } from "@/components/session/interviewee-onboarding";
 import { VoiceInterface } from "@/components/session/voice-interface";
 import { useEffect, useState } from "react";
 
@@ -11,6 +13,7 @@ type FunctionalRelayEvent =
 type FunctionalScenario = Record<string, { events: FunctionalRelayEvent[] }>;
 
 type FunctionalScenarioId =
+  | "connection-failure"
   | "default"
   | "english-failover"
   | "chinese-failover"
@@ -41,6 +44,10 @@ declare global {
 }
 
 const functionalScenarios: Record<FunctionalScenarioId, FunctionalScenario> = {
+  "connection-failure": {
+    "/ws/voice": { events: [{ type: "close", delay: 30 }] },
+    "/ws/openai-voice": { events: [{ type: "close", delay: 30 }] },
+  },
   default: {
     "/ws/voice": {
       events: [{ type: "ready", delay: 30 }],
@@ -420,10 +427,14 @@ function installFunctionalRelayMocks(scenario: FunctionalScenario) {
 export function VoiceFunctionalHarness({
   language,
   scenario,
+  recordWebcam = false,
 }: {
   language: string;
   scenario: string;
+  recordWebcam?: boolean;
 }) {
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraChecking, setCameraChecking] = useState(false);
   const [parentCompleted, setParentCompleted] = useState(false);
   const [mocksReady, setMocksReady] = useState(false);
 
@@ -434,6 +445,17 @@ export function VoiceFunctionalHarness({
     installFunctionalRelayMocks(activeScenario);
     setMocksReady(true);
   }, [scenario]);
+
+  if (scenario === "recorded-voices") return <RecordingFunctionalHarness />;
+
+  if (scenario === "camera-checklist") return (
+    <div className="mx-auto max-w-2xl p-4">
+      <div data-testid="harness-ready" className="sr-only">{String(mocksReady)}</div>
+      <RecordingCameraCheck onReady={setCameraReady} onChecking={setCameraChecking} />
+      <div data-testid="camera-ready">{String(cameraReady)}</div>
+      <button disabled={cameraChecking}>Next</button>
+    </div>
+  );
 
   return (
     <div className="relative min-h-screen bg-background">
@@ -451,6 +473,7 @@ export function VoiceFunctionalHarness({
         {mocksReady ? "true" : "false"}
       </div>
       <VoiceInterface
+        recordWebcam={recordWebcam}
         sessionId="functional-session"
         interviewId="functional-interview"
         interviewTitle="Functional Voice Interview"

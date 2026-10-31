@@ -5,7 +5,7 @@ import { TRPCError } from "@trpc/server";
 export async function apiCallerContext(auth: ApiKeyAuth) {
   const { data, error } = await supabaseAdmin.auth.admin.getUserById(auth.userId);
   if (error || !data.user) throw new TRPCError({ code: "UNAUTHORIZED" });
-  return { user: data.user, supabase: supabaseAdmin };
+  return { candidate: null, user: data.user, supabase: supabaseAdmin };
 }
 
 export function apiCallerError(error: unknown) {

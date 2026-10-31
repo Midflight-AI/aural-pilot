@@ -103,6 +103,7 @@ export function useInterviewRecording({
   const mixCtxRef = useRef<AudioContext | null>(null);
   const mixDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
   const screenshotTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const screenshotsRef = useRef<ScreenshotEntry[]>([]);
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -167,12 +168,15 @@ export function useInterviewRecording({
   }, []);
 
   /** Pipe a mic MediaStream into the recording mixer. */
-  const attachMicStream = useCallback((micStream: MediaStream) => {
+  const attachMicStream = useCallback((micStream: MediaStream | null) => {
+    // Microphone acquisition can finish before the recording mixer exists.
+    micStreamRef.current = micStream;
     const ctx = mixCtxRef.current;
-    if (!ctx || !mixDestRef.current) return;
 
     // Disconnect previous mic source if any
     try { micSourceRef.current?.disconnect(); } catch { /* noop */ }
+    micSourceRef.current = null;
+    if (!ctx || !mixDestRef.current || !micStream) return;
 
     const source = ctx.createMediaStreamSource(micStream);
     source.connect(mixDestRef.current);
@@ -302,9 +306,7 @@ export function useInterviewRecording({
       mixDestRef.current = dest;
 
       // Attach mic if provided
-      if (micStream) {
-        attachMicStream(micStream);
-      }
+      attachMicStream(micStream ?? micStreamRef.current);
 
       // Start MediaRecorder — prefer MP4/AAC (iOS-compatible) with WebM fallback
       chunksRef.current = [];
@@ -444,6 +446,7 @@ export function useInterviewRecording({
     try { mixCtxRef.current?.close(); } catch { /* noop */ }
     mixCtxRef.current = null;
     mixDestRef.current = null;
+    micStreamRef.current = null;
     recorderRef.current = null;
 
     // Stop camera/screen tracks
@@ -488,8 +491,17 @@ export function useInterviewRecording({
     };
   }, []);
 
+  // Freeze media time immediately when the interview ends. Metadata and upload
+  // work may continue, but must not extend the saved interview duration.
+  const pauseCapture = useCallback(() => {
+    if (recorderRef.current?.state === "recording") recorderRef.current.pause();
+    if (screenshotTimerRef.current) clearInterval(screenshotTimerRef.current);
+  }, []);
+
   return {
+    pauseCapture,
     start,
+    getMixedStream: () => mixDestRef.current?.stream ?? null,
     stop,
     addTtsChunk,
     cancelTts,

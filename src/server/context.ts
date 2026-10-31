@@ -1,6 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { headers } from "next/headers";
+import { headers, cookies } from "next/headers";
+import { CANDIDATE_COOKIE } from "@/lib/candidate-access";
+import { candidateScope } from "@/lib/candidate-access-server";
 
 export async function createContext() {
   const serverClient = await createClient();
@@ -27,7 +29,9 @@ export async function createContext() {
     }
   }
 
+  const candidate = !user && process.env.AURAL_EXTERNAL_CANDIDATES === "true" ? await candidateScope((await cookies()).get(CANDIDATE_COOKIE)?.value) : null;
   return {
+    candidate,
     user,
     supabase: supabaseAdmin,
   };

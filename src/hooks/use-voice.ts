@@ -59,6 +59,7 @@ interface UseVoiceOptions {
   onError?: (error: string) => void;
   onQuestionChange?: (index: number, total: number) => void;
   onTtsChunk?: (pcmData: ArrayBuffer) => void;
+  onMicStream?: (stream: MediaStream | null) => void;
   onInterrupt?: () => void;
   onWhiteboardSnapshotRequest?: () => string | null | Promise<string | null>;
 }
@@ -108,6 +109,7 @@ export function useVoice({
   onError,
   onQuestionChange,
   onTtsChunk,
+  onMicStream,
   onInterrupt,
   onWhiteboardSnapshotRequest,
 }: UseVoiceOptions) {
@@ -132,6 +134,8 @@ export function useVoice({
   const relayConnectorRef = useRef<RelayConnector<Record<string, unknown>> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const onMicStreamRef = useRef(onMicStream);
+  useEffect(() => { onMicStreamRef.current = onMicStream; }, [onMicStream]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const processorRef = useRef<any>(null);
   const playTimeRef = useRef(0);
@@ -626,7 +630,8 @@ export function useVoice({
   const connect = useCallback(async () => {
     try {
       // Request microphone permission
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      permissionStream.getTracks().forEach(track => track.stop());
 
       // Create AudioContext for playback
       if (!audioContextRef.current) {
@@ -661,6 +666,7 @@ export function useVoice({
         reconnectDelayMs: 1500,
         buildInitMessage: () => ({
           type: "init",
+          sessionId,
           context: {
             ...interviewContext,
             startQuestionIndex: currentQuestionIndexRef.current,
@@ -707,10 +713,12 @@ export function useVoice({
 
       relayConnectorRef.current = connector;
       await connector.connect();
+      return true;
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : "Voice connection failed";
       onError?.(msg);
+      return false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onError, playAudio, interviewContext]);
@@ -1241,6 +1249,7 @@ export function useVoice({
         },
       });
       mediaStreamRef.current = stream;
+      onMicStreamRef.current?.(stream);
 
       const ctx = new AudioContext({ sampleRate: 16000 });
       const source = ctx.createMediaStreamSource(stream);
@@ -1303,6 +1312,7 @@ export function useVoice({
   /** Stop capturing microphone */
   const stopListening = useCallback(() => {
     isListeningRef.current = false;
+    onMicStreamRef.current?.(null);
 
     if (processorRef.current) {
       const { processor, source, ctx } = processorRef.current;

@@ -1,4 +1,5 @@
 "use client";
+import { videoRequestHeaders } from "@/lib/video/client";
 
 import { PreparingScreen } from "@/components/session/preparing-screen";
 import {
@@ -66,7 +67,8 @@ interface IntervieweeOnboardingProps {
   chatEnabled?: boolean;
   aiName?: string;
   questionTypes?: string[];
-  onComplete: () => void;
+  sessionId?: string;
+  onComplete: (recordWebcam: boolean) => void;
 }
 
 type OnboardingStep = "info" | "checklist" | "howItWorks";
@@ -1288,6 +1290,90 @@ function ScreenCheck({
   );
 }
 
+export function RecordingCameraCheck({ onReady, onChecking }: {
+  onReady: (ready: boolean) => void;
+  onChecking: (checking: boolean) => void;
+}) {
+  const [phase, setPhase] = useState<"idle" | "requesting" | "preview" | "ready">("idle");
+  const [error, setError] = useState("");
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      streamRef.current?.getTracks().forEach(track => track.stop());
+    };
+  }, []);
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.srcObject = streamRef.current;
+  }, [phase]);
+  const testCamera = async () => {
+    onReady(false); onChecking(true); setError(""); setPhase("requesting");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      if (!mountedRef.current) { stream.getTracks().forEach(track => track.stop()); return; }
+      streamRef.current = stream;
+      setPhase("preview");
+    } catch {
+      if (!mountedRef.current) return;
+      setError("Unable to access camera. Check browser permissions and retry, or continue without video.");
+      setPhase("idle"); onChecking(false);
+    }
+  };
+  const finish = (record: boolean) => {
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+    onReady(record); onChecking(false); setPhase(record ? "ready" : "idle");
+  };
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start">
+        <div className="flex flex-col items-center gap-2">
+          <div className="relative flex h-36 w-44 flex-col items-center justify-center gap-2 overflow-hidden rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/50">
+            {phase === "preview" ? (
+              <video ref={videoRef} autoPlay playsInline muted aria-label="Camera preview" className="h-full w-full scale-x-[-1] object-cover" />
+            ) : <>
+              <Camera className={cn("h-10 w-10", phase === "ready" ? "text-primary" : "text-muted-foreground/30")} />
+              <span className={phase === "ready" ? "text-xs font-medium text-secondary-600 dark:text-secondary-400" : "text-[11px] text-muted-foreground/50"}>
+                {phase === "ready" ? "Camera confirmed" : "Webcam"}
+              </span>
+            </>}
+          </div>
+          {phase === "requesting" ? (
+            <Button size="sm" disabled className="w-full"><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Requesting camera…</Button>
+          ) : phase === "preview" ? (
+            <Button size="sm" onClick={() => finish(true)} className="w-full">Use Camera &amp; Record</Button>
+          ) : (
+            <Button size="sm" variant={phase === "ready" ? "outline" : "default"} onClick={() => void testCamera()} className="w-full">
+              <Camera className="mr-1.5 h-3.5 w-3.5" />{phase === "ready" ? "Test Again" : "Test Camera"}
+            </Button>
+          )}
+        </div>
+        <div className="flex-1 space-y-2">
+          <p className="text-sm font-medium">Test your camera to include video with your interview.</p>
+          <p className="text-xs text-muted-foreground">
+            {phase === "preview" ? 'Check that you can see yourself, then select “Use Camera & Record” to agree to recording your webcam and both voices.' :
+              phase === "ready" ? "Camera test passed. Your webcam and both voices will be recorded when you start the interview." :
+              'Click “Test Camera” to check your picture. This check is not recorded.'}
+          </p>
+          <p className="text-xs text-muted-foreground">Authorized recruiters can review recordings. They stay accessible until manually deleted. Keep this tab open until uploading finishes.</p>
+          {error && <div role="alert" className="flex items-center gap-1.5 rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive"><AlertCircle className="h-3.5 w-3.5 shrink-0" /><span>{error}</span></div>}
+          {phase !== "requesting" && <p className="text-xs text-muted-foreground">
+            {phase === "idle" ? "Video recording is optional." : <button type="button" onClick={() => finish(false)} className="font-medium text-primary hover:underline">Continue without video recording</button>}
+          </p>}
+        </div>
+        <div className="flex shrink-0 items-center self-start pt-0.5">
+          <span role="status" className={cn("flex items-center gap-1.5 text-sm", phase === "ready" ? "font-medium text-secondary-600 dark:text-secondary-400" : "text-muted-foreground")}>
+            {phase === "ready" ? <CheckCircle2 className="h-4 w-4" /> : <div className="h-4 w-4 rounded-full border-2" />}Camera
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function IntervieweeOnboarding({
   interviewTitle,
   interviewDescription,
@@ -1300,6 +1386,7 @@ export function IntervieweeOnboarding({
   chatEnabled = false,
   aiName = "AI Interviewer",
   questionTypes = [],
+  sessionId,
   onComplete,
 }: IntervieweeOnboardingProps) {
   const [step, setStep] = useState<OnboardingStep>("info");
@@ -1309,15 +1396,29 @@ export function IntervieweeOnboarding({
   const [micDone, setMicDone] = useState(false);
   const [screenDone, setScreenDone] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [recordWebcam, setRecordWebcam] = useState(false);
+  const [videoAvailable, setVideoAvailable] = useState(false);
+  const [checkingCamera, setCheckingCamera] = useState(false);
+
+  useEffect(() => {
+    if (!sessionId || !voiceEnabled) return;
+    const controller = new AbortController();
+    fetch(`/api/session/video?sessionId=${encodeURIComponent(sessionId)}`, {
+      cache: "no-store", signal: controller.signal, headers: videoRequestHeaders(),
+    }).then(response => {
+      if (response.ok && !controller.signal.aborted) setVideoAvailable(true);
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [sessionId, voiceEnabled]);
 
   const needsVisualChecks = videoEnabled || antiCheatingEnabled;
   const needsMicCheck = voiceEnabled || needsVisualChecks;
-  const allChecksDone = (!needsVisualChecks || (cameraDone && screenDone)) && (!needsMicCheck || micDone);
+  const allChecksDone = (!needsVisualChecks || (cameraDone && screenDone)) && (!needsMicCheck || micDone) && !checkingCamera;
 
   const handleComplete = useCallback(() => {
     setStarting(true);
-    onComplete();
-  }, [onComplete]);
+    onComplete(recordWebcam);
+  }, [onComplete, recordWebcam]);
 
   const header = (
     <header className="sticky top-0 z-50 flex h-14 items-center border-b bg-card px-4 sm:px-6">
@@ -1503,15 +1604,16 @@ export function IntervieweeOnboarding({
       <div className="mx-auto w-full max-w-2xl flex-1 space-y-4 px-4 pb-8">
         {needsVisualChecks && <CameraCheck done={cameraDone} onDone={() => setCameraDone(true)} allowSkip={!antiCheatingEnabled} />}
         {needsMicCheck && <MicCheck done={micDone} onDone={() => setMicDone(true)} language={language} allowSkip={!antiCheatingEnabled && !voiceEnabled} />}
+        {videoAvailable && <RecordingCameraCheck onReady={setRecordWebcam} onChecking={setCheckingCamera} />}
         {needsVisualChecks && <ScreenCheck done={screenDone} onDone={() => setScreenDone(true)} allowSkip={!antiCheatingEnabled} />}
 
         <div className="flex items-center justify-center gap-3 pt-4">
-          <Button variant="outline" onClick={() => setStep("info")}>
+          <Button variant="outline" onClick={() => { setRecordWebcam(false); setCheckingCamera(false); setStep("info"); }}>
             Back
           </Button>
           <Button disabled={!allChecksDone} onClick={() => {
             if (voiceEnabled) setStep("howItWorks");
-            else onComplete();
+            else handleComplete();
           }}>
             Next
           </Button>

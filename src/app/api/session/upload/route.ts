@@ -18,6 +18,8 @@ export async function POST(req: Request) {
     const formData = await req.formData();
     const file = formData.get("file") as Blob | null;
     const sessionId = formData.get("sessionId") as string | null;
+    const scope = req.headers.get("x-aural-candidate-session");
+    if (scope && scope !== sessionId) return NextResponse.json({ error: "access_denied" }, { status: 403 });
     const type = formData.get("type") as string | null;
     const filename = formData.get("filename") as string | null;
 

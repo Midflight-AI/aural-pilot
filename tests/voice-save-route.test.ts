@@ -1,3 +1,4 @@
+import { recordedSessionDuration } from "@/lib/recording-duration";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -397,4 +398,26 @@ test("handleVoiceSave surfaces storage failures", async () => {
   const result = await handleVoiceSave({ sessionId: "s4" }, failingOps);
   assert.equal(result.status, 500);
   assert.ok(errorLogs.some((a) => a[1] instanceof Error && a[1].message === "db down"));
+});
+
+
+test("recording duration sums resumed segments without counting setup or upload waits", () => {
+  assert.equal(recordedSessionDuration({audioDuration: 35}), 35);
+  assert.equal(recordedSessionDuration({audioDuration: 20, audioRecordings: [{duration: 15}, {duration: 20}]}), 35);
+  for (const value of [undefined, null, 0, -1, NaN, Infinity, "35"]) {
+    assert.equal(recordedSessionDuration({audioDuration: value}), null);
+  }
+  assert.equal(recordedSessionDuration({audioDuration: 20, audioRecordings: [{duration: null}, {duration: 20}]}), null);
+});
+
+test("voice completion uses 35 seconds of recorded time instead of five minutes on the invite page", async () => {
+  const {ops, updatedSessions} = createOps();
+  const result = await handleVoiceSave({sessionId: "setup-delay", complete: true}, {
+    ...ops,
+    async loadSessionForCompletion(id: string) {
+      return {...await ops.loadSessionForCompletion(id), audioDuration: 35, audioRecordings: [{duration: 35}]};
+    },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(updatedSessions[0].payload.totalDurationSeconds, 35);
 });

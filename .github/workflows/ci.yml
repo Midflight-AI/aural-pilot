@@ -34,6 +34,9 @@ jobs:
       - name: Type Check
         run: npx tsc --noEmit
 
+      - name: Video recovery spike tests
+        run: node --import tsx --test tests/video-transport.test.ts tests/video-isolation.test.ts tests/video-processor-auth.test.ts tests/relay-ticket.test.ts tests/candidate-access.test.ts tests/video-grant-recovery.test.ts
+
       - name: Test
         run: npm run test:web --if-present
 
@@ -61,3 +64,23 @@ jobs:
           SUPABASE_ANON_KEY: build-placeholder
           SUPABASE_SERVICE_ROLE_KEY: build-placeholder
           GEMINI_API_KEY: build-placeholder
+
+  video-database:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: disposable-video-ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Recording lifecycle and access regression tests
+        run: psql -h 127.0.0.1 -U postgres -d postgres -f tests/video-spike.sql
+        env:
+          PGPASSWORD: disposable-video-ci
