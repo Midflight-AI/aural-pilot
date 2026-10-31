@@ -132,6 +132,7 @@ export const analysisRouter = router({
       }
 
       return {
+        session_revision: session.sync_revision,
         interviewTitle: interview.title,
         interviewObjective: interview.objective,
         participantName: session.participantName,
