@@ -29,3 +29,13 @@ Report generation needs its own configured text-model deployment/provider; the v
 Before allowing fictional interview data: anonymous website request denied; anonymous relay handshake denied without opening an Azure session; unassigned Entra user denied; direct Supabase candidate listing and session mutation denied; unapproved signup denied. Then verify approved login, microphone check, spoken answers, interruption/retry, report synchronization, both voices playing back, and reviewer access denial. Keep real candidate data out until a separate readiness review.
 
 The current pilot voice model is `gpt-realtime-mini` 2025-12-15 because the subscription has no quota for upstream's default 1.5 model. Azure reports this version retires on 15 December 2026. Upgrade before then. Live model compatibility is not yet verified.
+
+## Verified checkpoint — 31 October 2026
+
+- Azure CLI authenticated to the dedicated Amped HQ — Aural Pilot subscription (`34e7b504-35c1-46d3-8cde-988c27568e63`). Microsoft.App provider registration requested; no relay host created yet.
+- Supabase project `knbbkrfatygusjqjcjcy`: migrations 001–007 applied, direct-browser access checks passed, one approved internal tester added. No candidate data loaded.
+- Vercel project `prj_bw2RnCtuOwEMT2BCokufwGJFlyX3`: all-deployment authentication enabled. Preview build fails because database environment variables are missing. Credential transfer requires the pending explicit destination approval; no credentials transferred.
+- Relay image remote CI passes at `e11ffa7c0014588646e43f5a058a235a1e0dc5c9`, including unprivileged runtime and imports. The Docker build now includes upstream `.npmrc` (`install-links=true`).
+- Next.js, DOMPurify, Zod and Undici patched within their existing major versions. The remote audit no longer reports high/critical findings. CI still stops on a moderate minimatch advisory in lint dependencies. Do not bypass the audit or force incompatible lint dependency downgrades.
+- Report generation remains unconfigured. East US 2 has Standard quota for GPT-4o, but GPT-4o-mini Standard is listed as retired; Global Standard quota is zero. Select a supported deployment configuration before using the report/generator workflows.
+- No public relay, successful website preview, end-to-end interview, Ramp production migration, merge or production release has been completed.
