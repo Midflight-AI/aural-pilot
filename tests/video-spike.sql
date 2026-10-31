@@ -12,6 +12,7 @@ insert into video_spike_recordings(id,session_id,owner_id,consent_version) value
 -- Simulate a recording created before the old 30-day cutoff, then upgrade it.
 update video_spike_recordings set created_at=now()-interval '90 days',expires_at=now()-interval '60 days';
 \ir ../supabase/migrations/20261031091602_video_manual_retention.sql
+\ir ../supabase/migrations/20261031095724_video_processing_queue.sql
 do $$
 declare v_id uuid:='33333333-3333-4333-8333-333333333333'; token uuid:='44444444-4444-4444-8444-444444444444'; m jsonb;
 begin
@@ -37,5 +38,30 @@ begin
  update video_spike_recordings set state='deleted',output_path=null where video_spike_recordings.id=v_id;
  begin perform video_spike_finalize(v_id,m,'manifest-hash');raise exception 'resurrected tombstone';exception when raise_exception then if sqlerrm<>'recording_closed' then raise;end if;end;
  if video_spike_claim(v_id,token) or video_spike_retry(v_id) or video_spike_complete(v_id,token,'stale.webm',5,null) then raise exception 'worker resurrected tombstone';end if;
+end $$;
+-- Scheduled queue: retries back off, crashed leases recover, and exhausted work stops.
+do $$
+declare sid uuid:=gen_random_uuid();rid uuid:=gen_random_uuid();t1 uuid:=gen_random_uuid();t2 uuid:=gen_random_uuid();
+begin
+ insert into sessions values(sid);
+ insert into video_spike_recordings(id,session_id,owner_id,consent_version,state,manifest_hash,manifest)
+ values(rid,sid,'11111111-1111-4111-8111-111111111111','internal-video-spike-v1','processing','sealed','{"partial":true}');
+ if video_spike_claim_next(t1) is distinct from rid then raise exception 'queue missed finalized work';end if;
+ if video_spike_claim_next(t2) is not null then raise exception 'queue double claimed';end if;
+ if not video_spike_heartbeat(rid,t1) or video_spike_heartbeat(rid,t2) then raise exception 'heartbeat fencing failed';end if;
+ perform video_spike_complete(rid,t1,null,null,'output_upload_failed');
+ if video_spike_claim_next(t2) is not null then raise exception 'retry ignored backoff';end if;
+ update video_spike_recordings set next_processing_at=now()-interval '1 second' where id=rid;
+ if video_spike_claim_next(t2) is distinct from rid then raise exception 'retry not scheduled';end if;
+ update video_spike_recordings set lease_until=now()-interval '1 second' where id=rid;
+ if video_spike_claim_next(t1) is distinct from rid then raise exception 'crash not recovered';end if;
+ if video_spike_complete(rid,t2,'stale.webm',5,null) then raise exception 'stale worker published';end if;
+ update video_spike_recordings set lease_until=now()-interval '1 second' where id=rid;
+ if video_spike_claim_next(t2) is not null then raise exception 'unbounded retries';end if;
+ if (select state from video_spike_recordings where id=rid)<>'failed' then raise exception 'exhausted work not failed';end if;
+ if not video_spike_retry(rid) or not video_spike_claim(rid,t1) then raise exception 'operator retry failed';end if;
+ if not video_spike_complete(rid,t1,'partial.webm',5,null) then raise exception 'partial completion failed';end if;
+ if (select state from video_spike_recordings where id=rid)<>'partial' then raise exception 'partial became complete';end if;
+ if has_function_privilege('authenticated','public.video_spike_claim_next(uuid)','execute') or has_function_privilege('anon','public.video_spike_heartbeat(uuid,uuid)','execute') then raise exception 'queue grants leaked';end if;
 end $$;
 rollback;

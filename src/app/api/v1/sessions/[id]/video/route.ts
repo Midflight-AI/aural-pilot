@@ -3,16 +3,16 @@ import { authorizeSession,json,OUTPUT_BUCKET,responseError,VideoError } from "@/
 export async function GET(request:Request,{params}:{params:Promise<{id:string}>}) {
  try {
   const {id}=await params;await authorizeSession(id,request);
-  const {data:row,error}=await db.from("video_spike_recordings").select("id,state,revision,duration_seconds,output_path,failure_code").eq("session_id",id).maybeSingle();
+  const {data:row,error}=await db.from("video_spike_recordings").select("id,state,revision,duration_seconds,output_path,failure_code,next_processing_at,processing_attempts").eq("session_id",id).maybeSingle();
   if(error) throw new VideoError(503,"recording_unavailable");
   if(!row) return json({data:null});
-  const state=row.state;
+  const state=row.state==="failed" && row.next_processing_at ? "retrying" : row.state;
   let playback: {url:string;expiresAt:string}|undefined;
   if(new URL(request.url).searchParams.get("playback")==="true" && ["ready","partial"].includes(state) && row.output_path) {
    const {data,error:signError}=await db.storage.from(OUTPUT_BUCKET).createSignedUrl(row.output_path,300);
    if(signError || !data) throw new VideoError(503,"playback_unavailable");
    playback={url:data.signedUrl,expiresAt:new Date(Date.now()+300000).toISOString()};
   }
-  return json({data:{id:row.id,kind:"video",state,revision:row.revision,durationSeconds:row.duration_seconds,expiresAt:null,failureCode:row.failure_code,playback}});
+  return json({data:{id:row.id,kind:"video",state,revision:row.revision,durationSeconds:row.duration_seconds,expiresAt:null,failureCode:row.failure_code,processingAttempts:row.processing_attempts,playback}});
  } catch(error) { return responseError(error); }
 }

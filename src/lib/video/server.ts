@@ -1,4 +1,4 @@
-import { isolatedVideoDatabase } from "./isolation";
+import { videoDatabaseAllowed } from "./isolation";
 import { createHash } from "node:crypto";
 import { supabaseAdmin as db } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -9,7 +9,7 @@ export const SOURCE_BUCKET = "video-spike-source";
 export const OUTPUT_BUCKET = "video-spike-output";
 export class VideoError extends Error { constructor(public status: number, code: string) { super(code); } }
 export function requireSpike() {
-  if (process.env.AURAL_VIDEO_SPIKE_ENABLED !== "true" || process.env.VERCEL_ENV !== "preview" || !isolatedVideoDatabase(process.env.SUPABASE_URL, process.env.AURAL_VIDEO_SPIKE_DATABASE_REF)) throw new VideoError(404, "not_enabled");
+  if (process.env.AURAL_VIDEO_SPIKE_ENABLED !== "true" || !videoDatabaseAllowed(process.env.SUPABASE_URL, process.env.AURAL_VIDEO_SPIKE_DATABASE_REF, process.env.VERCEL_ENV)) throw new VideoError(404, "not_enabled");
 }
 export function uuid(value: unknown): string {
   if (typeof value !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value)) throw new VideoError(400, "invalid_id");

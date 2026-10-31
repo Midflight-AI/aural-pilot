@@ -23,7 +23,7 @@ into the same container.
   buffers are bounded. 30-minute capture cutoff. Final manifest limited to 512 MiB.
 - Finalization checks all reserved/acknowledged chunks under a database lock and
   rejects conflicting manifests. It sets processing, never ready.
-- Manual preview worker verifies hashes, assembles only this container, remuxes
+- Scheduled worker claims finalized recordings, verifies hashes, assembles only this container, remuxes
   duration/seek metadata, checks both tracks and decodes before publishing ready
   or partial. Token-fenced completion cannot overwrite a tombstone.
 - Ramp checks recruiter permission and its existing attempt/connection mapping.
@@ -34,8 +34,9 @@ into the same container.
 ## Provisioning and operation
 
 Aural's baseline database `knbbkrfatygusjqjcjcy` is now reserved for its intended
-production deployment. Do not apply this feature migration there. Both API and
-worker explicitly reject that database and Ramp production.
+production deployment. Preview configuration rejects that database and Ramp production.
+Production activation requires an explicit production environment, the matching Aural
+production database reference and the feature flag; it is not activated by this PR.
 
 The webhook task owns one shared isolated feature-preview database and baseline
 provisioning. Serialize feature schema application with that owner. Required Aural
@@ -55,8 +56,26 @@ Five-minute playback links expire for access control; authorized users can obtai
 fresh links regardless of recording age. There is no automatic purge.
 
 Run `scripts/video-spike-worker.ts <recording UUID>` with the isolated Aural env and
-ffmpeg/ffprobe available. Pass `--retry` to requeue a failed sealed asset without
-recapture. It is a manual spike processor, not an automatic service.
+ffmpeg/ffprobe available and `AURAL_VIDEO_ENVIRONMENT=preview`. Pass `--retry`
+to requeue a failed sealed asset without recapture. With no recording argument,
+the worker drains the durable queue (up to three assets per invocation).
+
+Build `deploy/video-worker.Dockerfile` remotely and run a separate Container Apps
+scheduled job every minute, with no ingress, a 20-minute execution timeout and
+platform retry limit zero. Database claims cap concurrent work at two recordings.
+A heartbeat renews a ten-minute lease; a crashed worker can be replaced after expiry.
+Transient processing errors retry after 60 then 240 seconds, at most three attempts.
+Corrupt media is terminal. An operator can explicitly requeue a sealed failure.
+Use the existing managed identity for ACR pull; database credentials belong in
+job secrets, never the image. The preview job must point only at the isolated DB.
+
+Production release order: apply reviewed migrations, deploy the immutable worker
+image with production-specific secrets and `AURAL_VIDEO_ENVIRONMENT=production`,
+then enable the matching Aural and Ramp flags and verify a real saved recording
+through authenticated recruiter playback. Keep flags off until these gates pass.
+Watch failed job executions and queue rows with expired leases or exhausted
+attempts; logs contain only recording IDs, safe error codes and processing counts.
+No worker path deletes source or output objects.
 The source bucket accepts immutable 20 MiB objects. Supabase signed upload grants
 last two hours (provider API limit), not five minutes; finalization/deletion gates
 still deny attachment of stale uploads. Playback grants last five minutes.
@@ -76,7 +95,7 @@ at a 600 Hz control); this is not human microphone/AI interview proof.
 
 Not yet established: real webcam/microphone/AI sample in deployed Ramp; 5/15/30-minute
 runs; measured drift; all-browser compatibility; camera reconnect; browser crash
-recovery; hosted processing/retries; manual deletion workflow;
+recovery; deployed scheduled-worker acceptance; manual deletion workflow;
 Sentry delivery; end-to-end authorization tests. Recordings have no age-based playback cutoff or automatic deletion.
 Existing expiry timestamps are cleared by the forward retention migration. Reviewer output is WebM, not MP4/Safari proof.
 The existing audio recorder still buffers its entire audio file; this spike does
@@ -101,3 +120,10 @@ allowing parent completion. The synthetic microphone fixture explicitly uses the
 existing Unmute control. These are mocked browser cases, not deployed interview proof.
 
 Full validation runs remotely. A clean build alone does not establish these gates.
+
+Checklist update: microphone and optional webcam verification share the same card
+layout. Explicit recording consent is collected with camera confirmation. Capture
+starts only after the voice relay connects. Failed initial connections release
+the camera and retain the empty attempt identity for retry, including after reload.
+Browser regressions cover denial, recording consent, upload recovery and failed
+connection retry. The protected relay also needs a current Microsoft session.
