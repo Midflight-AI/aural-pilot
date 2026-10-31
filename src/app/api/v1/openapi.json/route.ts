@@ -15,6 +15,8 @@ const spec = {
 
 **Authentication:** Send your developer key in the \`Authorization\` header as a Bearer token: \`Authorization: Bearer dlv_xxx\`. Keys are organization-scoped; list and mutation operations only apply to projects your key can access.
 
+**Retry-safe creation:** When invitation lifecycle is enabled, send \`Idempotency-Key\` on interview/candidate creation; repeat the identical payload after a timeout. Reusing a key for different data returns 409. Keyed interview creation accepts initial \`questions:[{text}]\` atomically. Keyed candidates accept \`inviteExpiresAt\`.
+
 **Typical interview workflow**
 
 To run an interview: 1. Create interview (\`POST /interviews\`), 2. Add questions (\`POST /interviews/{id}/questions\`), 3. Publish (\`POST /interviews/{id}/publish\`), 4. Share the URL, 5. Poll sessions (\`GET /interviews/{id}/sessions\`), 6. Get results (\`GET /sessions/{id}\`).`,
