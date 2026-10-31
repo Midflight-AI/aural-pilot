@@ -60,7 +60,7 @@ export async function ownedRecording(id: string) {
   if (!recording) throw new VideoError(404, "recording_unavailable");
   const userId = await authorizeSession(recording.session_id);
   if (recording.owner_id !== userId) throw new VideoError(403, "access_denied");
-  if (["deleted", "expired"].includes(recording.state) || Date.parse(recording.expires_at) <= Date.now()) throw new VideoError(410, "recording_closed");
+  if (["deleted", "expired"].includes(recording.state)) throw new VideoError(410, "recording_closed");
   return recording;
 }
 export function chunkDescriptor(value: unknown): ChunkDescriptor {

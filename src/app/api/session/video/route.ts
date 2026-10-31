@@ -10,9 +10,9 @@ export async function POST(request: Request) {
   const ownerId=await authorizeSession(sessionId);
   if(body.consentVersion!=="internal-video-spike-v1" || body.consent!==true) throw new VideoError(400,"consent_required");
   const {error}=await db.from("video_spike_recordings").insert({id,session_id:sessionId,owner_id:ownerId,consent_version:body.consentVersion});
-  const {data:row}=await db.from("video_spike_recordings").select("id,owner_id,state,expires_at").eq("session_id",sessionId).maybeSingle();
+  const {data:row}=await db.from("video_spike_recordings").select("id,owner_id,state").eq("session_id",sessionId).maybeSingle();
   if(!row || row.id!==id || row.owner_id!==ownerId) throw new VideoError(error?409:503,"recording_exists_or_unavailable");
-  if(["deleted","expired"].includes(row.state) || Date.parse(row.expires_at)<=Date.now()) throw new VideoError(410,"recording_closed");
+  if(["deleted","expired"].includes(row.state)) throw new VideoError(410,"recording_closed");
   return json({id:row.id,state:row.state});
  } catch(error) { return responseError(error); }
 }

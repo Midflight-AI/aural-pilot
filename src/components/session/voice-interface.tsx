@@ -2148,7 +2148,7 @@ export function VoiceInterface({
               {videoSpike.enabled && !voice.isConnected && !preview && !locallyCompleted && (
                 <label className="flex max-w-md items-start gap-2 text-sm">
                   <input type="checkbox" checked={videoSpike.consent} onChange={e => videoSpike.setConsent(e.target.checked)} disabled={isStartingInterview} />
-                  Record my webcam and both voices for this internal preview. Authorized recruiters can review it; playback access expires after 30 days. Closing this tab can lose unsaved video.
+                  Record my webcam and both voices for this internal preview. Authorized recruiters can review it; recordings remain accessible until manually deleted. Closing this tab can lose unsaved video.
                 </label>
               )}
               {videoSpike.enabled && (videoRecoveryNeeded || (videoSpike.recovery.length > 0 && !videoSpike.active() && !isStartingInterview)) && (

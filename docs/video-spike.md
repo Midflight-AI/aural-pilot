@@ -25,7 +25,7 @@ into the same container.
   rejects conflicting manifests. It sets processing, never ready.
 - Manual preview worker verifies hashes, assembles only this container, remuxes
   duration/seek metadata, checks both tracks and decodes before publishing ready
-  or partial. Token-fenced completion cannot overwrite a tombstone or expired row.
+  or partial. Token-fenced completion cannot overwrite a tombstone.
 - Ramp checks recruiter permission and its existing attempt/connection mapping.
   Aural checks the API key's project. Playback grants last five minutes and are
   obtained on demand, never stored in Ramp evidence. Pending video polls separately
@@ -50,11 +50,15 @@ Ramp needs its existing isolated preview DB, a branch-only AURAL_CONNECTIONS ent
 for the Aural video preview, and `AURAL_VIDEO_SPIKE_ENABLED=true`. Never reuse the
 old deployment-specific scheduler grant or alter the baseline production settings.
 
+Retention policy: keep source and output objects until explicit manual deletion.
+Five-minute playback links expire for access control; authorized users can obtain
+fresh links regardless of recording age. There is no automatic purge.
+
 Run `scripts/video-spike-worker.ts <recording UUID>` with the isolated Aural env and
 ffmpeg/ffprobe available. Pass `--retry` to requeue a failed sealed asset without
 recapture. It is a manual spike processor, not an automatic service.
 The source bucket accepts immutable 20 MiB objects. Supabase signed upload grants
-last two hours (provider API limit), not five minutes; finalization/expiry gates
+last two hours (provider API limit), not five minutes; finalization/deletion gates
 still deny attachment of stale uploads. Playback grants last five minutes.
 
 ## Evidence and limitations
@@ -72,9 +76,9 @@ at a 600 Hz control); this is not human microphone/AI interview proof.
 
 Not yet established: real webcam/microphone/AI sample in deployed Ramp; 5/15/30-minute
 runs; measured drift; all-browser compatibility; camera reconnect; browser crash
-recovery; hosted processing/retries; automatic retention purge and deletion workflow;
-Sentry delivery; end-to-end authorization tests. Playback expiry is enforced, but
-physical object purge is not scheduled. Reviewer output is WebM, not MP4/Safari proof.
+recovery; hosted processing/retries; manual deletion workflow;
+Sentry delivery; end-to-end authorization tests. Recordings have no age-based playback cutoff or automatic deletion.
+Existing expiry timestamps are cleared by the forward retention migration. Reviewer output is WebM, not MP4/Safari proof.
 The existing audio recorder still buffers its entire audio file; this spike does
 not claim whole-session bounded memory. No video availability/readiness is written
 into canonical Ramp evidence yet, and no video event is emitted.

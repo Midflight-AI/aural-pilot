@@ -9,9 +9,14 @@ create table public.sessions(id uuid primary key);
 insert into auth.users values('11111111-1111-4111-8111-111111111111');
 insert into sessions values('22222222-2222-4222-8222-222222222222');
 insert into video_spike_recordings(id,session_id,owner_id,consent_version) values('33333333-3333-4333-8333-333333333333','22222222-2222-4222-8222-222222222222','11111111-1111-4111-8111-111111111111','internal-video-spike-v1');
+-- Simulate a recording created before the old 30-day cutoff, then upgrade it.
+update video_spike_recordings set created_at=now()-interval '90 days',expires_at=now()-interval '60 days';
+\ir ../supabase/migrations/20261031091602_video_manual_retention.sql
 do $$
 declare v_id uuid:='33333333-3333-4333-8333-333333333333'; token uuid:='44444444-4444-4444-8444-444444444444'; m jsonb;
 begin
+ if (select expires_at from video_spike_recordings where id=v_id) is not null then raise exception 'legacy expiry retained';end if;
+ if exists(select 1 from information_schema.columns where table_schema='public' and table_name='video_spike_recordings' and column_name='expires_at' and (is_nullable<>'YES' or column_default is not null)) then raise exception 'new recordings still expire';end if;
  if has_table_privilege('authenticated','public.video_spike_recordings','select') or has_function_privilege('authenticated','public.video_spike_finalize(uuid,jsonb,text)','execute') then raise exception 'browser privileges leaked'; end if;
  if not (select relrowsecurity from pg_class where oid='public.video_spike_recordings'::regclass) then raise exception 'RLS missing'; end if;
  perform video_spike_chunk(v_id,0,10,repeat('a',64),5000,false);
