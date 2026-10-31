@@ -79,4 +79,9 @@ The existing audio recorder still buffers its entire audio file; this spike does
 not claim whole-session bounded memory. No video availability/readiness is written
 into canonical Ramp evidence yet, and no video event is emitted.
 
+Disposable PostgreSQL CI passed lifecycle/access checks on `cd2806c`: missing or
+conflicting chunks, duplicate finalization, stale worker fencing, failed-processing
+retry, tombstone protection, RLS and denied browser grants. The Chromium mixer
+probe also sought to 30 seconds and resumed playback (readyState 4, no media error).
+
 Full validation runs remotely. A clean build alone does not establish these gates.

@@ -85,6 +85,13 @@ export class VideoUploadQueue {
         this.onLimit("backlog_limit");
         return;
       }
+      const existing = await this.store.pending(this.manifest.id);
+      if (existing.reduce((total, item) => total + item.bytes, 0) + chunk.bytes > BACKLOG_BYTES) {
+        this.manifest.partial = true;
+        this.manifest.failureCode = "backlog_limit";
+        this.onLimit("backlog_limit");
+        return;
+      }
       const next = { ...this.manifest, chunks: [...this.manifest.chunks, { sequence: chunk.sequence, bytes: chunk.bytes, sha256: chunk.sha256, endMs }] };
       await this.store.put(this.manifest.id, chunk, next);
       this.manifest.chunks = next.chunks;

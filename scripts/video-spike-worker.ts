@@ -23,6 +23,7 @@ async function main() {
  if(claimError || !claimed) throw new Error("recording_not_claimed");
  const directory=await mkdtemp(join(tmpdir(),"aural-video-worker-"));
  let outputPath:string|undefined;
+ let completionAttempted=false;
  try {
   const {data:row,error}=await db.from("video_spike_recordings").select("manifest").eq("id",id).single();
   if(error || !row) throw new Error("manifest_unavailable");
@@ -48,11 +49,14 @@ async function main() {
   outputPath=`${id}/${token}.webm`;
   const {error:uploadError}=await db.storage.from("video-spike-output").upload(outputPath,await readFile(output),{contentType:"video/webm",upsert:false});
   if(uploadError) throw new Error("output_upload_failed");
+  completionAttempted=true;
   const {data:committed,error:commitError}=await db.rpc("video_spike_complete",{p_id:id,p_token:token,p_path:outputPath,p_duration:duration});
   if(commitError||!committed) throw new Error("processing_lease_lost");
   console.log(JSON.stringify({recordingId:id,state:manifest.partial?"partial":"ready",durationSeconds:duration,chunks:manifest.chunks.length}));
  } catch(error) {
-  if(outputPath) await db.storage.from("video-spike-output").remove([outputPath]);
+  // An ambiguous completion response may already have committed ready. Never
+  // delete its validated asset; preserve a possible orphan for later cleanup.
+  if(outputPath && !completionAttempted) await db.storage.from("video-spike-output").remove([outputPath]);
   await db.rpc("video_spike_complete",{p_id:id,p_token:token,p_path:null,p_duration:null,p_error:"processing_failed"});
   // Never print provider replies, storage URLs, subprocess stderr or media content.
   throw new Error(error instanceof Error && /^[a-z_]+$/.test(error.message)?error.message:"processing_failed");
