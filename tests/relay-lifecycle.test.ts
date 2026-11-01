@@ -62,6 +62,10 @@ test("relay releases upstream connections on setup disconnect and isolates six s
     assert.equal(peak, 6);
     for (const ws of clients) ws.close();
     await until(() => active === 0, 2000);
+    const liveness = await fetch(`http://127.0.0.1:${port}/healthz`);
+    assert.equal(liveness.status, 200);
+    assert.deepEqual(await liveness.json(), { status: "ok" });
+    assert.equal((await fetch(`http://127.0.0.1:${port}/unknown`)).status, 404);
     respond = false;
     const silent = await connect(); let warned = false;
     silent.on("message", (raw, binary) => { if (!binary && JSON.parse(raw.toString()).type === "error") warned = true; });
