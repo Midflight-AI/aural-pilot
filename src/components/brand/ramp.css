@@ -42,3 +42,5 @@
   .ramp-wordmark { width: 145px; }
   :root:has([data-ramp-surface]) [data-slot="button"] { min-height: 44px; }
 }
+
+:root:has([data-ramp-surface]) .text-amber-600 { color: #805b10; }

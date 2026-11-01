@@ -60,7 +60,7 @@ export function LoginForm() {
         <CardTitle className="font-heading text-2xl">
           {t("auth.welcomeBack")}
         </CardTitle>
-        <CardDescription>{t("auth.signInSubtitle")}</CardDescription>
+        <CardDescription>{t("auth.signInSubtitle", { brand: "Ramp Remote" })}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">

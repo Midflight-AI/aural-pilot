@@ -10,8 +10,8 @@ import { VideoRecoveryPanel } from "@/components/session/video-recovery";
 import { DEFAULT_FOLLOW_UP_DEPTH } from "@/lib/follow-up-depth";
 import { Button } from "@/components/ui/button";
 
-const VoiceInterface = dynamic(() => import("@/components/session/voice-interface").then(m => m.VoiceInterface), { ssr: false });
-const ChatInterface = dynamic(() => import("@/components/session/chat-interface").then(m => m.ChatInterface), { ssr: false });
+const VoiceInterface = dynamic(() => import("@/components/session/voice-interface").then(m => m.VoiceInterface), { ssr: false, loading: () => <PreparingScreen /> });
+const ChatInterface = dynamic(() => import("@/components/session/chat-interface").then(m => m.ChatInterface), { ssr: false, loading: () => <PreparingScreen /> });
 const screens = ["Information & checks", "Loading", "Voice interview", "Chat interview", "Upload recovery", "Completed", "Time limit"] as const;
 type Screen = typeof screens[number];
 const title = "Customer Support Specialist";
