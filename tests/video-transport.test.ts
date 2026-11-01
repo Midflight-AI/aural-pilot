@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { VideoUploadQueue, validateManifest, type VideoManifest, type PendingChunk, type VideoStore } from "../src/lib/video/transport";
+import { VideoUploadQueue, validateManifest, recoverStoredVideo, type VideoManifest, type PendingChunk, type VideoStore } from "../src/lib/video/transport";
 
 function fixture() {
   const manifest: VideoManifest = { id: crypto.randomUUID(), sessionId: crypto.randomUUID(), generation: 1, mimeType: "video/webm;codecs=vp8,opus", chunks: [], sealed: false, partial: false };
@@ -117,4 +117,28 @@ test("uploads are bounded and failed batches settle before retry or finalization
  await queue.seal();await assert.rejects(queue.retry(),/lost connection/);
  assert.equal(active,0);assert.equal(peak,3);assert.equal(finalized,0);assert.equal(f.chunks.size,5);
  fail=false;await queue.retry();assert.equal(finalized,1);assert.equal(peak,3);
+});
+
+
+test("retry after setup outage preserves an empty reservation for a later capture", async () => {
+ const f=fixture();let uploads=0;let finalizations=0;
+ await f.store.saveManifest(f.manifest);
+ const transport={async upload(){uploads++;},async finalize(){finalizations++;}};
+ assert.equal(await recoverStoredVideo(f.manifest,f.store,transport),false);
+ assert.equal(f.manifest.sealed,false);assert.equal(f.manifest.partial,false);
+ assert.equal(f.saved()!.id,f.manifest.id);assert.equal(finalizations,0);
+ const capture=new VideoUploadQueue(f.manifest,f.store,transport,()=>assert.fail());
+ await capture.append(new Blob(["fresh container"]),5000);await capture.seal();await capture.retry();
+ assert.equal(uploads,1);assert.equal(finalizations,1);
+});
+
+test("reload recovery seals real interrupted media as partial and preserves failed uploads", async () => {
+ const f=fixture();let offline=true;let finalized=0;
+ const transport={async upload(){if(offline)throw new Error("offline");},async finalize(m:VideoManifest){assert.equal(m.partial,true);finalized++;}};
+ const capture=new VideoUploadQueue(f.manifest,f.store,transport,()=>assert.fail());
+ await capture.append(new Blob(["surviving chunk"]),5000);
+ await assert.rejects(recoverStoredVideo(f.saved()!,f.store,transport),/offline/);
+ assert.equal(f.saved()!.sealed,true);assert.equal(f.saved()!.partial,true);assert.equal(f.chunks.size,1);assert.equal(finalized,0);
+ offline=false;assert.equal(await recoverStoredVideo(f.saved()!,f.store,transport),true);
+ assert.equal(f.chunks.size,0);assert.equal(finalized,1);
 });

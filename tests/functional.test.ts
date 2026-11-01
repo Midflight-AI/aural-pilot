@@ -697,6 +697,37 @@ test("video consent with camera denial never connects the interview relay", asyn
   await context.close();
 });
 
+test("failed video setup recovers without sealing an empty reservation or changing its ID", async () => {
+ const context=await browser.newContext({locale:"en-US"});const page=await context.newPage();
+ let offline=true;const ids:string[]=[];
+ try {
+  await page.route("**/api/session/video?*",route=>route.fulfill({status:200,contentType:"application/json",body:'{"enabled":true}'}));
+  await page.route("**/api/session/video",route=>{
+   ids.push(route.request().postDataJSON().id);
+   return route.fulfill({status:offline?503:200,contentType:"application/json",body:'{"state":"capturing"}'});
+  });
+  await page.route("**/api/session/video/*",route=>route.fulfill({status:200,contentType:"application/json",body:'{"acknowledged":true,"state":"processing"}'}));
+  await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=english-failover&recordWebcam=1`);
+  await waitForCondition(async()=>(await page.getByTestId("harness-ready").textContent())==="true");
+  await page.evaluate(()=>{
+   const original=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+   navigator.mediaDevices.getUserMedia=async constraints=>{
+    if(constraints?.video){const canvas=document.createElement("canvas");canvas.width=640;canvas.height=480;return canvas.captureStream(1);}
+    return original(constraints);
+   };
+  });
+  await page.getByRole("button",{name:"Start Interview"}).click();await waitForText(page,"video_request_failed");
+  assert.deepEqual(await readRelayConnections(page),[]);
+  offline=false;await page.evaluate(()=>window.dispatchEvent(new Event("online")));
+  await waitForCondition(async()=>ids.length>=2);
+  // The recovery request completes asynchronously; the start path must keep the same reservation.
+  await page.getByRole("button",{name:"Start Interview"}).click();
+  await waitForCondition(async()=>(await readRelayConnections(page)).length>0);
+  assert.ok(ids.length>=3);assert.equal(new Set(ids).size,1);
+  assert.equal(await page.getByRole("button",{name:"Retry video upload"}).count(),0);
+ } finally {await context.close();}
+});
+
 test("video upload failure keeps recovery visible and preserves audio before parent completion", async () => {
   const context = await browser.newContext({ locale: "en-US" });
   const page = await context.newPage();

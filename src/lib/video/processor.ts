@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { once } from "node:events";
+import { processingErrorCode } from "./processing-error";
 import { videoDatabaseAllowed } from "./isolation";
 import { validateManifest, type VideoManifest } from "./transport";
 
@@ -99,7 +100,7 @@ export async function processVideoQueue(requestedId?: string): Promise<Processin
     const result: ProcessingResult = { recordingId: id, state: manifest.partial ? "partial" : "ready", totalMs: Date.now() - started, downloadAndRemuxMs, validationMs, uploadMs, durationSeconds: duration, chunks: manifest.chunks.length };
     results.push(result); console.log(JSON.stringify({ event: "video_processing_complete", ...result }));
    } catch (error) {
-    const code = error instanceof Error && /^[a-z_]+$/.test(error.message) ? error.message : "processing_failed";
+    const code = processingErrorCode(error);
     // Preserve all source/output objects, including an ambiguous successful commit.
     await db.rpc("video_spike_complete", { p_id: id, p_token: token, p_path: null, p_duration: null, p_error: code });
     const result = { recordingId: id, state: "failed", code, totalMs: Date.now() - started };

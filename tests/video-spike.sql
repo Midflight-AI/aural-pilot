@@ -13,6 +13,7 @@ insert into video_spike_recordings(id,session_id,owner_id,consent_version) value
 update video_spike_recordings set created_at=now()-interval '90 days',expires_at=now()-interval '60 days';
 \ir ../supabase/migrations/20261031091602_video_manual_retention.sql
 \ir ../supabase/migrations/20261031095724_video_processing_queue.sql
+\ir ../supabase/migrations/20261101051116_video_reservation_budget.sql
 do $$
 declare v_id uuid:='33333333-3333-4333-8333-333333333333'; token uuid:='44444444-4444-4444-8444-444444444444'; m jsonb;
 begin
@@ -63,5 +64,38 @@ begin
  if not video_spike_complete(rid,t1,'partial.webm',5,null) then raise exception 'partial completion failed';end if;
  if (select state from video_spike_recordings where id=rid)<>'partial' then raise exception 'partial became complete';end if;
  if has_function_privilege('authenticated','public.video_spike_claim_next(uuid)','execute') or has_function_privilege('anon','public.video_spike_heartbeat(uuid,uuid)','execute') then raise exception 'queue grants leaked';end if;
+end $$;
+-- Corruption is terminal; infrastructure timeouts schedule recovery without deleting media.
+do $$
+declare sid uuid:=gen_random_uuid();rid uuid:=gen_random_uuid();token uuid:=gen_random_uuid();
+begin
+ insert into sessions values(sid);
+ insert into video_spike_recordings(id,session_id,owner_id,consent_version,state,manifest_hash,manifest)
+ values(rid,sid,'11111111-1111-4111-8111-111111111111','internal-video-spike-v1','processing','sealed','{"partial":false}');
+ perform video_spike_claim(rid,token);
+ perform video_spike_complete(rid,token,null,null,'media_invalid');
+ if (select next_processing_at from video_spike_recordings where id=rid) is not null then raise exception 'corrupt media retried automatically';end if;
+ if not video_spike_retry(rid) or not video_spike_claim(rid,token) then raise exception 'operator recovery unavailable';end if;
+ perform video_spike_complete(rid,token,null,null,'processing_timeout');
+ if (select next_processing_at from video_spike_recordings where id=rid) is null then raise exception 'timeout not retried';end if;
+end $$;
+-- Reservations cannot consume more storage than the final recording budget.
+do $$
+declare sid uuid:=gen_random_uuid();rid uuid:=gen_random_uuid();i integer;
+begin
+ insert into sessions values(sid);
+ insert into video_spike_recordings(id,session_id,owner_id,consent_version)
+ values(rid,sid,'11111111-1111-4111-8111-111111111111','internal-video-spike-v1');
+ for i in 0..19 loop perform video_spike_chunk(rid,i,20971520,repeat('b',64),(i+1)*5000,false);end loop;
+ if (select sum(bytes) from video_spike_chunks where recording_id=rid)<>419430400 then raise exception 'budget boundary rejected';end if;
+ -- Exact retries and acknowledgements do not reserve bytes twice at the limit.
+ perform video_spike_chunk(rid,0,20971520,repeat('b',64),5000,true);
+ if not video_spike_chunk(rid,0,20971520,repeat('b',64),5000,false) then raise exception 'lost acknowledgement cannot recover';end if;
+ begin
+  perform video_spike_chunk(rid,20,1,repeat('b',64),105000,false);
+  raise exception 'reserved beyond recording budget';
+ exception when raise_exception then if sqlerrm<>'recording_too_large' then raise;end if;end;
+ if (select count(*) from video_spike_chunks where recording_id=rid)<>20 then raise exception 'failed reservation persisted';end if;
+ if (select expires_at from video_spike_recordings where id=rid) is not null then raise exception 'retention changed';end if;
 end $$;
 rollback;
