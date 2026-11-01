@@ -60,7 +60,7 @@ export async function proxy(request: NextRequest) {
     }
     if (path.startsWith("/api/") && !user) {
       // These routes implement their own key, cron, auth or scoped tRPC checks.
-      const selfAuthorized = path.startsWith("/api/v1/") || path.startsWith("/api/trpc/") || path.startsWith("/api/auth/") || path.startsWith("/api/session/video") || path === "/api/internal/video/process" || path === "/api/locale";
+      const selfAuthorized = path.startsWith("/api/v1/") || path.startsWith("/api/trpc/") || path.startsWith("/api/auth/") || path.startsWith("/api/session/video") || path === "/api/internal/video/process" || path === "/api/internal/health" || path === "/api/internal/observations" || path === "/api/session/observations" || path === "/api/locale";
       if (!selfAuthorized) {
         const allowed = ["/api/voice/ticket", "/api/voice/token", "/api/voice/save", "/api/voice/tts-s2s", "/api/session/upload", "/api/session/complete", "/api/session/leave"];
         if (!allowed.includes(path)) return NextResponse.json({ error: "sign_in_required" }, { status: 401 });
