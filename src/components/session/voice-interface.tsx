@@ -399,6 +399,7 @@ interface VoiceInterfaceProps {
   preview?: boolean;
   /** Show camera placement without requesting a device in the design preview. */
   previewWebcam?: boolean;
+  previewVoiceState?: "listening" | "speaking" | "thinking";
 }
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -421,9 +422,29 @@ export function VoiceInterface({
   recordWebcam = false,
   preview = false,
   previewWebcam = false,
+  previewVoiceState = "listening",
 }: VoiceInterfaceProps) {
   useChunkLoadRecovery();
   useSessionToolChunkPrefetch(!preview);
+
+  // Only preview mode supplies synthetic levels. The same rendered indicators
+  // below read the real microphone level during a live interview.
+  const [previewAudioLevel, setPreviewAudioLevel] = useState(0.35);
+  useEffect(() => {
+    if (!preview || previewVoiceState === "thinking") return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const sync = () => {
+      if (timer) clearInterval(timer);
+      if (!reducedMotion.matches) timer = setInterval(() => {
+        const elapsed = performance.now() / 350;
+        setPreviewAudioLevel(0.2 + (Math.sin(elapsed) + 1) * 0.3);
+      }, 100);
+    };
+    sync();
+    reducedMotion.addEventListener("change", sync);
+    return () => { if (timer) clearInterval(timer); reducedMotion.removeEventListener("change", sync); };
+  }, [preview, previewVoiceState]);
 
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -1475,15 +1496,16 @@ export function VoiceInterface({
   const isCodingQuestion = currentQVoice?.type === "CODING";
   const isWhiteboardQuestion = currentQVoice?.type === "WHITEBOARD";
   const showVoiceTransitioning = voice.isTransitioning;
-  const showVoiceProcessing = !showVoiceTransitioning && voice.isProcessing;
-  const showVoiceSpeaking =
+  const showVoiceProcessing = preview ? previewVoiceState === "thinking" : !showVoiceTransitioning && voice.isProcessing;
+  const showVoiceSpeaking = preview ? previewVoiceState === "speaking" :
     !showVoiceTransitioning && !showVoiceProcessing && voice.isSpeaking;
-  const showVoiceListening =
+  const showVoiceListening = preview ? previewVoiceState === "listening" :
     voice.isConnected &&
     !showVoiceTransitioning &&
     !showVoiceProcessing &&
     !showVoiceSpeaking &&
     voice.isListening;
+  const displayAudioLevel = preview ? previewAudioLevel : voice.audioLevel;
   const showTranscribingWithoutMic =
     voice.isTranscribing && !showVoiceTransitioning && !showVoiceSpeaking &&
     !showVoiceProcessing && !showVoiceListening;
@@ -1760,7 +1782,7 @@ export function VoiceInterface({
                       <Mic className="absolute inset-0 h-full w-full text-secondary-500 motion-safe:animate-pulse" />
                       <div
                         className="absolute inset-0 overflow-hidden transition-[clip-path] duration-150 ease-out"
-                        style={{ clipPath: `inset(${(1 - voice.audioLevel) * 100}% 0 0 0)` }}
+                        style={{ clipPath: `inset(${(1 - displayAudioLevel) * 100}% 0 0 0)` }}
                       >
                         <Mic className="h-full w-full text-secondary-400" />
                       </div>
@@ -2102,7 +2124,7 @@ export function VoiceInterface({
                 )}
                 {showVoiceSpeaking && (
                   <div className="flex items-center gap-2 text-primary">
-                    <Volume2 className="h-5 w-5 animate-pulse" />
+                    <Volume2 className="h-5 w-5 motion-safe:animate-pulse" />
                     <span className="text-sm font-medium">{aiName} is speaking...</span>
                   </div>
                 )}
@@ -2115,7 +2137,7 @@ export function VoiceInterface({
                         <Mic className="absolute inset-0 h-full w-full text-muted-foreground/30" />
                         <div
                           className="absolute inset-0 overflow-hidden transition-[clip-path] duration-150 ease-out"
-                          style={{ clipPath: `inset(${(1 - voice.audioLevel) * 100}% 0 0 0)` }}
+                          style={{ clipPath: `inset(${(1 - displayAudioLevel) * 100}% 0 0 0)` }}
                         >
                           <Mic className="h-full w-full text-secondary-400" />
                         </div>
@@ -2136,9 +2158,9 @@ export function VoiceInterface({
 
                 {/* Audio waveform — driven by real audio level */}
                 {(showVoiceSpeaking || showVoiceListening) && (
-                  <div className="flex items-center gap-1">
+                  <div data-testid="voice-waveform" aria-hidden="true" className="flex items-center gap-1">
                     {Array.from({ length: 20 }).map((_, i) => {
-                      const level = showVoiceSpeaking ? 0.5 : voice.audioLevel;
+                      const level = showVoiceSpeaking ? 0.5 : displayAudioLevel;
                       const barVariance = Math.sin((i + Date.now() / 200) * 0.7) * 0.3 + 0.7;
                       return (
                         <div
@@ -2219,7 +2241,7 @@ export function VoiceInterface({
 
               {preview && (
                 <p className="text-sm text-muted-foreground">
-                  This is where the voice conversation happens
+                  Animation preview · simulated audio input; microphone is off.
                 </p>
               )}
               {voice.isConnected && !voice.isListening && !showVoiceProcessing && !showVoiceSpeaking && !showVoiceTransitioning && !voice.isTranscribing && (
