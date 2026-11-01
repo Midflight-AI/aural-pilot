@@ -18,3 +18,12 @@ Configure the relay's `AURAL_OBSERVABILITY_URL` to the same environment's `/api/
 Before release: run remote CI and database access/idempotency tests; verify unauthenticated ingestion/read denial; exercise real concurrent voice sessions and early disconnect, retry, upload recovery, processing and playback. Record exact deployment/image, measured concurrency, outcomes and remaining limits here. Do not infer voice capacity from the video worker benchmark.
 
 The authenticated `/operations` page is restricted to explicit existing staff user IDs in `AURAL_OPERATIONS_USER_IDS`; it fails closed when unset. It shows the same aggregate snapshot without exposing candidate records.
+
+## Verification checkpoint — 1 November 2026
+
+- Isolated migration: `20261101062051`, assigned by Supabase on apply; local filename follows that actual ledger identity. No applied migration was renumbered.
+- Private telemetry grants and idempotent retries verified against isolated data. Forced timeout appears in the aggregate health snapshot; rollback left no fake incident.
+- CI for `2ae71f2` passed full lint, types, tests, functional browser tests, database lifecycle tests and build. Later changes require their own exact-head CI.
+- Zero-traffic Azure revision `aural-relay--obs2ae71f2`, image `sha256:a22b6b632f97ff9cdf29b565af3e84f1ee3746bd3d2df692722048dfbb1a47bc`, passed six simultaneous synthetic spoken interviews with 2.508–2.819s speech-end to first received response audio, zero errors and zero retries. This is a short six-session canary test, not a sustained-load SLA or browser playback measurement. 0.5 CPU / 1 GiB; max replicas 3. Production stayed on `aural-relay--0000002` with 100% traffic.
+- A baseline harness originally included four seconds of trailing silence and missed replies arriving during that silence. Those timeout results are invalid as latency measurements. With silence trimmed, the old relay answered five of six turns in 2.501–2.567s; one timed out without browser retry enabled.
+- Pending release gates: new preview branch credential approval; verify deployed authenticated ingestion and operator dashboard; configure chosen alert destination; latest-head canary; end-to-end recording/playback and exact production deployment proof. Do not merge or claim rollout-ready while these remain pending.

@@ -692,6 +692,9 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
   const observations = relayObservations(sessionId);
   browserWs.once("close", () => observations.close());
   let modelResponseRequestedAt = 0;
+  let responseWaitTimer: ReturnType<typeof setTimeout> | null = null;
+  const clearResponseWait = () => { if (responseWaitTimer) clearTimeout(responseWaitTimer); responseWaitTimer = null; };
+  browserWs.once("close", clearResponseWait);
   const sortedQuestions = ctx.questions.sort((a, b) => a.order - b.order);
   const isZh = isChineseInterview(ctx);
   let currentQuestionIndex = ctx.startQuestionIndex ?? 0;
@@ -909,6 +912,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
   }
 
   function cancelOngoingResponse() {
+    clearResponseWait();
     modelResponseRequestedAt = 0;
     const shouldCancel =
       responseInFlight ||
@@ -948,6 +952,13 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     responseInFlight = true;
     modelResponseRequestedAt = performance.now();
     oaiWs.send(JSON.stringify(payload));
+    clearResponseWait();
+    responseWaitTimer = setTimeout(() => {
+      responseWaitTimer = null;
+      if (browserClosed || responseAudioStarted || !responseInFlight) return;
+      observations.emit("voice_timeout", 15_000);
+      send({ type: "error", message: "The interviewer is taking longer than expected. Please reconnect to continue." });
+    }, 15_000);
     log.info(`Requested assistant response (${reason})`);
   }
 
@@ -1550,6 +1561,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
             modelIsSpeaking = true;
             if (!isTransitioning && msg.delta) {
               if (!responseAudioStarted) {
+                clearResponseWait();
                 responseAudioStarted = true;
                 responseAudioStartedAt = Date.now();
                 if (modelResponseRequestedAt) observations.emit("voice_model_first_audio",performance.now()-modelResponseRequestedAt);
@@ -1980,6 +1992,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
 
     // Give the browser time to set up its AudioContext before streaming audio
     await new Promise((r) => setTimeout(r, 1_500));
+    if (browserClosed) return;
 
     // Trigger initial greeting
     const greeting = currentQuestionIndex > 0

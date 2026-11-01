@@ -13,14 +13,14 @@ async function until(predicate: () => boolean, ms = 5000) {
   while (!predicate() && Date.now() < end) await delay(25);
   assert.ok(predicate(), "condition reached before deadline");
 }
-test("relay releases upstream connections on setup disconnect and isolates six simultaneous sessions", { timeout: 20000 }, async () => {
+test("relay releases upstream connections on setup disconnect and isolates six simultaneous sessions", { timeout: 35000 }, async () => {
   const provider = new WebSocketServer({ port: 0 });
   await once(provider, "listening");
   const providerPort = (provider.address() as { port: number }).port;
   const portProbe = createServer(); portProbe.listen(0); await once(portProbe, "listening");
   const port = (portProbe.address() as { port: number }).port; await new Promise<void>(resolve => portProbe.close(() => resolve()));
   let active = 0, peak = 0, initialized = 0;
-  let holdSetup = true;
+  let holdSetup = true; let respond = true;
   provider.on("connection", ws => {
     active++; peak = Math.max(peak, active);
     ws.on("close", () => { active--; });
@@ -31,7 +31,7 @@ test("relay releases upstream connections on setup disconnect and isolates six s
         initialized++;
         if (!holdSetup) ws.send(JSON.stringify({ type: "session.updated", session: {} }));
       }
-      if (msg.type === "response.create") {
+      if (msg.type === "response.create" && respond) {
         ws.send(JSON.stringify({ type: "response.created" }));
         ws.send(JSON.stringify({ type: "response.output_audio.delta", delta: Buffer.alloc(4800).toString("base64") }));
         ws.send(JSON.stringify({ type: "response.done", response: { status: "completed", output: [{}] } }));
@@ -62,6 +62,16 @@ test("relay releases upstream connections on setup disconnect and isolates six s
     assert.equal(peak, 6);
     for (const ws of clients) ws.close();
     await until(() => active === 0, 2000);
+    respond = false;
+    const silent = await connect(); let warned = false;
+    silent.on("message", (raw, binary) => { if (!binary && JSON.parse(raw.toString()).type === "error") warned = true; });
+    await until(() => warned, 18000);
+    silent.close(); await until(() => active === 0, 2000);
+    respond = true;
+    const recovered = await connect(); let recoveredAudio = false;
+    recovered.on("message", (_raw, binary) => { if (binary) recoveredAudio = true; });
+    await until(() => recoveredAudio, 4000);
+    recovered.close(); await until(() => active === 0, 2000);
   } catch(error) { console.error(logs); throw error; } finally {
     for (const ws of clients) ws.terminate();
     relay.kill("SIGTERM"); await once(relay, "exit");

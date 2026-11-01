@@ -22,7 +22,7 @@ export function observe(sessionId: string, kind: ObservationKind, durationMs?: n
   if (!installed) {
     installed = true;
     const flush = () => { for (const q of queues.values()) void q.flush(); };
-    setInterval(flush, 5_000);
+    setInterval(flush, 15_000);
     window.addEventListener("online", flush);
     window.addEventListener("pagehide", flush);
     document.addEventListener("visibilitychange", () => { if (document.hidden) flush(); });
