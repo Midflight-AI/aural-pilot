@@ -40,9 +40,9 @@ test("relay releases upstream connections on setup disconnect and isolates six s
   });
   const secret = "disposable-observability-test-secret-32-characters";
   const relay = spawn(process.execPath, ["--import", "tsx", "server/openai-voice-relay.ts"], { env: { ...process.env, AZURE_OPENAI_ENDPOINT: `ws://127.0.0.1:${providerPort}`, AZURE_OPENAI_API_KEY: "disposable", OPENAI_VOICE_RELAY_PORT: String(port), VOICE_RELAY_AUTH_REQUIRED: "true", VOICE_RELAY_AUTH_SECRET: secret, VOICE_ASR_PRIMARY: "openai", DOUBAO_APP_ID: "", DOUBAO_ACCESS_TOKEN: "", AURAL_OBSERVABILITY_URL: "" }, stdio: ["ignore", "pipe", "pipe"] });
-  let started = false;
-  relay.stdout.on("data", data => { if (data.toString().includes("listening on")) started = true; });
-  relay.stderr.resume();
+  let started = false; let logs = "";
+  relay.stdout.on("data", data => { logs = (logs + data.toString()).slice(-8000); if (data.toString().includes("listening on")) started = true; });
+  relay.stderr.on("data", data => { logs = (logs + data.toString()).slice(-8000); });
   const clients: WebSocket[] = [];
   const connect = async () => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}`); clients.push(ws); await once(ws, "open");
@@ -62,7 +62,7 @@ test("relay releases upstream connections on setup disconnect and isolates six s
     assert.equal(peak, 6);
     for (const ws of clients) ws.close();
     await until(() => active === 0, 2000);
-  } finally {
+  } catch(error) { console.error(logs); throw error; } finally {
     for (const ws of clients) ws.terminate();
     relay.kill("SIGTERM"); await once(relay, "exit");
     for (const ws of provider.clients) ws.terminate();

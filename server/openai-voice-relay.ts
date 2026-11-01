@@ -1,3 +1,4 @@
+import { waitForRealtimeEvent } from "./realtime-handshake";
 import { relayObservations } from "./relay-observability";
 import { verifyRelayTicket } from "../src/lib/voice/relay-ticket";
 /**
@@ -1863,32 +1864,11 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     });
     connectingWs = ws;
     try {
-    await new Promise<void>((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("OpenAI connect timeout")), 10_000);
-      ws.on("open", () => { clearTimeout(t); resolve(); });
-      ws.on("error", (e) => { clearTimeout(t); reject(e); });
-    });
-
-    // Wait for session.created and log default config
-    await new Promise<void>((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("Session create timeout")), 10_000);
-      const h = (data: Buffer) => {
-        try {
-          const msg = JSON.parse(data.toString());
-          if (msg.type === "session.created") {
-            clearTimeout(t);
-            ws.removeListener("message", h);
-            log.info("Session created — default config keys:", Object.keys(msg.session || {}));
-            resolve();
-          }
-        } catch { /* ignore */ }
-      };
-      ws.on("message", h);
-    });
+    await waitForRealtimeEvent(ws,"session.created");
 
     const systemPrompt = buildSystemPrompt(ctx, currentQuestionIndex);
 
-    ws.send(JSON.stringify({
+    await waitForRealtimeEvent(ws,"session.updated", () => ws.send(JSON.stringify({
       type: "session.update",
       session: {
         type: "realtime",
@@ -1904,28 +1884,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
         tools: OPENAI_TOOLS,
         tool_choice: "auto",
       },
-    }));
-
-    // Wait for session.updated and log effective config
-    await new Promise<void>((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("Session update timeout")), 10_000);
-      const h = (data: Buffer) => {
-        try {
-          const msg = JSON.parse(data.toString());
-          if (msg.type === "session.updated") {
-            clearTimeout(t);
-            ws.removeListener("message", h);
-            const s = msg.session || {};
-            const audioIn = s.audio?.input || {};
-            log.info("Session updated — transcription:", JSON.stringify(audioIn.transcription), "turn_detection:", audioIn.turn_detection?.type, "noise_reduction:", JSON.stringify(audioIn.noise_reduction));
-            resolve();
-          } else if (msg.type === "error") {
-            log.error("Session update error:", JSON.stringify(msg.error));
-          }
-        } catch { /* ignore */ }
-      };
-      ws.on("message", h);
-    });
+    })));
 
     if (browserClosed) throw new Error("browser_closed");
     return ws;
