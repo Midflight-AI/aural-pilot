@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { once } from "node:events";
+import { orderedPrefetch, processingClaims } from "./processing-schedule";
 import { processingErrorCode } from "./processing-error";
 import { videoDatabaseAllowed } from "./isolation";
 import { validateManifest, type VideoManifest } from "./transport";
@@ -17,7 +18,7 @@ const ffprobe = () => process.env.FFPROBE_PATH || join(process.cwd(), "node_modu
 // Fluid Compute can share a process and its scratch disk across requests.
 // This is a resource guard only; database leases provide durable ownership.
 let running = false;
-export type ProcessingResult = { recordingId: string; state: string; totalMs: number; downloadAndRemuxMs?: number; validationMs?: number; uploadMs?: number; durationSeconds?: number; chunks?: number; code?: string };
+export type ProcessingResult = { recordingId: string; state: string; totalMs: number; workerRegion?: string; workerPeakRssMiB?: number; downloadAndRemuxMs?: number; validationMs?: number; uploadMs?: number; durationSeconds?: number; chunks?: number; code?: string };
 
 export async function processVideoQueue(requestedId?: string): Promise<ProcessingResult[]> {
  if (running) return [];
@@ -29,12 +30,14 @@ export async function processVideoQueue(requestedId?: string): Promise<Processin
  const deadline = Date.now() + 740_000;
  try {
   const db = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.any([...(init?.signal ? [init.signal] : []), AbortSignal.timeout(60_000)]) }) } });
-  while (results.length < (requestedId ? 1 : 3) && deadline - Date.now() > 30_000) {
+  const claims = processingClaims(async preferred => {
    const token = randomUUID();
-   const claim = requestedId ? await db.rpc("video_spike_claim", { p_id: requestedId, p_token: token }) : await db.rpc("video_spike_claim_next", { p_token: token });
+   const claim = preferred ? await db.rpc("video_spike_claim", { p_id: preferred, p_token: token }) : await db.rpc("video_spike_claim_next", { p_token: token });
    if (claim.error) throw new Error("queue_unavailable");
-   const id = requestedId ? (claim.data ? requestedId : null) : claim.data as string | null;
-   if (!id) break;
+   const id = preferred ? (claim.data ? preferred : null) : claim.data as string | null;
+   return id ? { id, token } : null;
+  }, deadline, requestedId);
+  for await (const { id, token } of claims) {
    const started = Date.now();
    const controller = new AbortController();
    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(Math.max(1, deadline - Date.now()))]);
@@ -67,13 +70,17 @@ export async function processVideoQueue(requestedId?: string): Promise<Processin
     });
     void closed.catch(() => { childFailed = true; });
     try {
-     for (const chunk of manifest.chunks) {
-      signal.throwIfAborted();
-      if (childFailed) throw new Error("media_invalid");
-      const { data, error: downloadError } = await db.storage.from("video-spike-source").download(`${id}/${chunk.sequence}-${chunk.sha256}.bin`);
+     const buffers = orderedPrefetch(manifest.chunks, async (chunk, downloadSignal) => {
+      const { data, error: downloadError } = await db.storage.from("video-spike-source").download(`${id}/${chunk.sequence}-${chunk.sha256}.bin`, {}, { signal: downloadSignal });
+      downloadSignal.throwIfAborted();
       if (downloadError || !data || data.size !== chunk.bytes) throw new Error("chunk_missing");
       const buffer = Buffer.from(await data.arrayBuffer());
       if (createHash("sha256").update(buffer).digest("hex") !== chunk.sha256) throw new Error("chunk_corrupt");
+      return buffer;
+     }, signal);
+     for await (const buffer of buffers) {
+      signal.throwIfAborted();
+      if (childFailed) throw new Error("media_invalid");
       if (!child.stdin.write(buffer)) await Promise.race([once(child.stdin, "drain"), closed.then(() => { throw new Error("media_invalid"); })]);
      }
      child.stdin.end();
@@ -97,7 +104,7 @@ export async function processVideoQueue(requestedId?: string): Promise<Processin
     const uploadMs = Date.now() - uploadStarted;
     const { data: committed, error: commitError } = await db.rpc("video_spike_complete", { p_id: id, p_token: token, p_path: outputPath, p_duration: duration });
     if (commitError || !committed) throw new Error("processing_lease_lost");
-    const result: ProcessingResult = { recordingId: id, state: manifest.partial ? "partial" : "ready", totalMs: Date.now() - started, downloadAndRemuxMs, validationMs, uploadMs, durationSeconds: duration, chunks: manifest.chunks.length };
+    const result: ProcessingResult = { recordingId: id, state: manifest.partial ? "partial" : "ready", totalMs: Date.now() - started, downloadAndRemuxMs, validationMs, uploadMs, durationSeconds: duration, chunks: manifest.chunks.length, workerRegion: process.env.VERCEL_REGION, workerPeakRssMiB: Math.ceil(process.resourceUsage().maxRSS / 1024) };
     results.push(result); console.log(JSON.stringify({ event: "video_processing_complete", ...result }));
    } catch (error) {
     const code = processingErrorCode(error);
