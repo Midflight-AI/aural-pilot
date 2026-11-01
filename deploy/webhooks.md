@@ -150,3 +150,28 @@ Resolve that exact-body mapping and prerequisite order before future admission;
 do not blindly merge renamed prerequisites ahead of the existing inbox file.
 Video-ready/deletion lifecycle and recording recovery remain owned by the
 separate video spike and are not implemented by this core webhook change.
+
+## Canonical snapshot and delivery operations
+
+`GET /api/v1/sessions/{id}/snapshot` reads session, report and ordered transcript
+in one PostgREST SQL snapshot. `schema_version: "1"` and `session_revision` define
+the contract; the report repeats the same revision. It excludes participant
+identity, signed URLs, screenshots and surveillance data. `readiness.recording`
+means committed metadata (`registered`), not storage or playback verification.
+Fresh playback grants remain a separate operation. GET never generates a report.
+
+`GET /api/v1/webhook-deliveries?subscription_id=...&limit=20` lists content-free
+rows newest first with an opaque cursor retaining timestamp precision. API-key
+project access scopes both events and subscriptions. `POST
+/api/v1/webhook-deliveries/{event_id}/retry` accepts only subscription_id and a
+UUID request_id. Enabled projects/subscriptions can retry dead rows with expired
+or absent leases. Pending/delivered rows are no-ops. Replaying request_id after a
+lost response never resets a later cycle. A service-only audit records each
+accepted manual restart and actor. No destination or event body can be changed.
+
+Migration `20261101042905_webhook_delivery_controls.sql` is applied only to
+isolated feature preview fjagcdzwvwfdufefpglm; its filename matches the recorded
+migration version. The SQL regression script `tests/sql/webhook-controls.sql`
+rolls back all fixtures and verifies scope, role grants, enabled flags, leases,
+retry idempotence, audit count and delivered no-ops. OpenAPI describes all three
+endpoints. Targeted tests and full CI passed on the API implementation checkpoint.
