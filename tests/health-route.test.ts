@@ -12,7 +12,7 @@ test("health probe uses a separate read credential and reports failure and recov
  const { GET } = await import("../src/app/api/internal/health/route");
 
  let failed = true, unavailable = false, calls = 0;
- const rpc = mock.method(db, "rpc", () => { calls++; return Promise.resolve(unavailable ? {data:null,error:{message:"unavailable"}} : {data:{windowMinutes:15,metrics:[],stuckRecordings:failed?1:0,unrecoveredUploads:0,failedRecordings:0},error:null}); }) as typeof db.rpc;
+ mock.method(db, "rpc", () => { calls++; return Promise.resolve(unavailable ? {data:null,error:{message:"unavailable"}} : {data:{windowMinutes:15,metrics:[],stuckRecordings:failed?1:0,unrecoveredUploads:0,failedRecordings:0},error:null}); }) as typeof db.rpc;
  try {
   assert.equal((await GET(new Request("https://example.test/api/internal/health"))).status,401);
   assert.equal(calls,0);
@@ -27,7 +27,7 @@ test("health probe uses a separate read credential and reports failure and recov
   assert.equal((await GET(request("test-probe"))).status,503);
   assert.equal((await GET(request("wrong"))).status,401);
  } finally {
-  rpc.mock.restore();
+  mock.restoreAll();
   keys.forEach((key,index)=>{if(prior[index]===undefined)delete process.env[key];else process.env[key]=prior[index];});
  }
 });
