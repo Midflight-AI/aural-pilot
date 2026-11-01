@@ -1,0 +1,228 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "probeSecret": {
+      "type": "securestring"
+    },
+    "alertEmail": {
+      "type": "string"
+    },
+    "enabled": {
+      "type": "bool",
+      "defaultValue": false
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2022-10-01",
+      "name": "aural-operations-logs",
+      "location": "australiaeast",
+      "properties": {
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": 30,
+        "workspaceCapping": {
+          "dailyQuotaGb": 1
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Insights/components",
+      "apiVersion": "2020-02-02",
+      "name": "aural-operations",
+      "location": "australiaeast",
+      "kind": "web",
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces','aural-operations-logs')]"
+      ],
+      "properties": {
+        "Application_Type": "web",
+        "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces','aural-operations-logs')]",
+        "RetentionInDays": 30,
+        "DisableIpMasking": false,
+        "DisableLocalAuth": true
+      }
+    },
+    {
+      "type": "Microsoft.Insights/actionGroups",
+      "apiVersion": "2023-01-01",
+      "name": "aural-production-alerts",
+      "location": "global",
+      "properties": {
+        "groupShortName": "AuralOps",
+        "enabled": true,
+        "emailReceivers": [
+          {
+            "name": "Josh",
+            "emailAddress": "[parameters('alertEmail')]",
+            "useCommonAlertSchema": true
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Insights/webtests",
+      "apiVersion": "2022-06-15",
+      "name": "aural-interview-health",
+      "location": "australiaeast",
+      "kind": "standard",
+      "dependsOn": [
+        "[resourceId('Microsoft.Insights/components','aural-operations')]"
+      ],
+      "tags": {
+        "[concat('hidden-link:', resourceId('Microsoft.Insights/components','aural-operations'))]": "Resource"
+      },
+      "properties": {
+        "Name": "aural-interview-health",
+        "SyntheticMonitorId": "aural-interview-health",
+        "Kind": "standard",
+        "Enabled": "[parameters('enabled')]",
+        "Frequency": 300,
+        "Timeout": 30,
+        "RetryEnabled": true,
+        "Locations": [
+          {
+            "Id": "emea-au-syd-edge"
+          },
+          {
+            "Id": "apac-sg-sin-azr"
+          },
+          {
+            "Id": "apac-hk-hkn-azr"
+          }
+        ],
+        "Request": {
+          "RequestUrl": "https://interviews.rampremote.com/api/internal/health",
+          "HttpVerb": "GET",
+          "FollowRedirects": false,
+          "ParseDependentRequests": false,
+          "Headers": [
+            {
+              "key": "Authorization",
+              "value": "[concat('Bearer ', parameters('probeSecret'))]"
+            }
+          ]
+        },
+        "ValidationRules": {
+          "ExpectedHttpStatusCode": 200,
+          "SSLCheck": true,
+          "SSLCertRemainingLifetimeCheck": 7
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Insights/metricAlerts",
+      "apiVersion": "2018-03-01",
+      "name": "aural-interview-health-failure",
+      "location": "global",
+      "dependsOn": [
+        "[resourceId('Microsoft.Insights/webtests','aural-interview-health')]",
+        "[resourceId('Microsoft.Insights/actionGroups','aural-production-alerts')]"
+      ],
+      "properties": {
+        "description": "Production Aural monitoring. Investigate interview health and voice connectivity; recovery sends a resolved notification.",
+        "severity": 1,
+        "enabled": "[parameters('enabled')]",
+        "scopes": [
+          "[resourceId('Microsoft.Insights/webtests','aural-interview-health')]",
+          "[resourceId('Microsoft.Insights/components','aural-operations')]"
+        ],
+        "evaluationFrequency": "PT1M",
+        "windowSize": "PT5M",
+        "autoMitigate": true,
+        "criteria": {
+          "odata.type": "Microsoft.Azure.Monitor.WebtestLocationAvailabilityCriteria",
+          "webTestId": "[resourceId('Microsoft.Insights/webtests','aural-interview-health')]",
+          "componentId": "[resourceId('Microsoft.Insights/components','aural-operations')]",
+          "failedLocationCount": 2
+        },
+        "actions": [
+          {
+            "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups','aural-production-alerts')]"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Insights/webtests",
+      "apiVersion": "2022-06-15",
+      "name": "aural-voice-relay",
+      "location": "australiaeast",
+      "kind": "standard",
+      "dependsOn": [
+        "[resourceId('Microsoft.Insights/components','aural-operations')]"
+      ],
+      "tags": {
+        "[concat('hidden-link:', resourceId('Microsoft.Insights/components','aural-operations'))]": "Resource"
+      },
+      "properties": {
+        "Name": "aural-voice-relay",
+        "SyntheticMonitorId": "aural-voice-relay",
+        "Kind": "standard",
+        "Enabled": "[parameters('enabled')]",
+        "Frequency": 300,
+        "Timeout": 30,
+        "RetryEnabled": true,
+        "Locations": [
+          {
+            "Id": "emea-au-syd-edge"
+          },
+          {
+            "Id": "apac-sg-sin-azr"
+          },
+          {
+            "Id": "apac-hk-hkn-azr"
+          }
+        ],
+        "Request": {
+          "RequestUrl": "https://aural-relay.purpleflower-a0eeeb4d.eastus2.azurecontainerapps.io/healthz",
+          "HttpVerb": "GET",
+          "FollowRedirects": false,
+          "ParseDependentRequests": false,
+          "Headers": []
+        },
+        "ValidationRules": {
+          "ExpectedHttpStatusCode": 200,
+          "SSLCheck": true,
+          "SSLCertRemainingLifetimeCheck": 7
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Insights/metricAlerts",
+      "apiVersion": "2018-03-01",
+      "name": "aural-voice-relay-failure",
+      "location": "global",
+      "dependsOn": [
+        "[resourceId('Microsoft.Insights/webtests','aural-voice-relay')]",
+        "[resourceId('Microsoft.Insights/actionGroups','aural-production-alerts')]"
+      ],
+      "properties": {
+        "description": "Production Aural monitoring. Investigate interview health and voice connectivity; recovery sends a resolved notification.",
+        "severity": 1,
+        "enabled": "[parameters('enabled')]",
+        "scopes": [
+          "[resourceId('Microsoft.Insights/webtests','aural-voice-relay')]",
+          "[resourceId('Microsoft.Insights/components','aural-operations')]"
+        ],
+        "evaluationFrequency": "PT1M",
+        "windowSize": "PT5M",
+        "autoMitigate": true,
+        "criteria": {
+          "odata.type": "Microsoft.Azure.Monitor.WebtestLocationAvailabilityCriteria",
+          "webTestId": "[resourceId('Microsoft.Insights/webtests','aural-voice-relay')]",
+          "componentId": "[resourceId('Microsoft.Insights/components','aural-operations')]",
+          "failedLocationCount": 2
+        },
+        "actions": [
+          {
+            "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups','aural-production-alerts')]"
+          }
+        ]
+      }
+    }
+  ]
+}

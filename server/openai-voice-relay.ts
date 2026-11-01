@@ -11,6 +11,7 @@ import { verifyRelayTicket } from "../src/lib/voice/relay-ticket";
  */
 
 import { randomUUID } from "crypto";
+import { createServer } from "node:http";
 import { config } from "dotenv";
 import { WebSocket, WebSocketServer } from "ws";
 import { maxFollowUpsForDepth } from "../src/lib/follow-up-depth";
@@ -410,7 +411,12 @@ const OPENAI_TOOLS = [{
 const relayAuthRequired = process.env.VOICE_RELAY_AUTH_REQUIRED === "true";
 if (relayAuthRequired && (process.env.VOICE_RELAY_AUTH_SECRET?.length ?? 0) < 32) throw new Error("relay_auth_unconfigured");
 const activeSubjects = new Map<string, number>();
-const wss = new WebSocketServer({ port: RELAY_PORT, maxPayload: 256 * 1024 });
+const httpServer = createServer((request, response) => {
+  response.writeHead(request.url === "/healthz" ? 200 : 404, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+  response.end(JSON.stringify({ status: request.url === "/healthz" ? "ok" : "not_found" }));
+});
+const wss = new WebSocketServer({ server: httpServer, maxPayload: 256 * 1024 });
+httpServer.listen(RELAY_PORT);
 log.info(`OpenAI voice relay listening on ws://localhost:${RELAY_PORT}`);
 log.info(`Deployment: ${AZURE_DEPLOYMENT}, Voice: ${AZURE_VOICE}`);
 log.info(
