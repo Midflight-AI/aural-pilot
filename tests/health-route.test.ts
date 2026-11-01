@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 
 test("health probe uses a separate read credential and reports failure and recovery", async () => {
  const keys = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "CRON_SECRET", "AURAL_HEALTH_PROBE_SECRET"] as const;
@@ -10,9 +10,9 @@ test("health probe uses a separate read credential and reports failure and recov
  process.env.AURAL_HEALTH_PROBE_SECRET = "test-probe";
  const { supabaseAdmin: db } = await import("../src/lib/supabase/admin");
  const { GET } = await import("../src/app/api/internal/health/route");
- const original = db.rpc;
+
  let failed = true, unavailable = false, calls = 0;
- db.rpc = (() => { calls++; return Promise.resolve(unavailable ? {data:null,error:{message:"unavailable"}} : {data:{windowMinutes:15,metrics:[],stuckRecordings:failed?1:0,unrecoveredUploads:0,failedRecordings:0},error:null}); }) as typeof db.rpc;
+ const rpc = mock.method(db, "rpc", () => { calls++; return Promise.resolve(unavailable ? {data:null,error:{message:"unavailable"}} : {data:{windowMinutes:15,metrics:[],stuckRecordings:failed?1:0,unrecoveredUploads:0,failedRecordings:0},error:null}); }) as typeof db.rpc;
  try {
   assert.equal((await GET(new Request("https://example.test/api/internal/health"))).status,401);
   assert.equal(calls,0);
@@ -27,7 +27,7 @@ test("health probe uses a separate read credential and reports failure and recov
   assert.equal((await GET(request("test-probe"))).status,503);
   assert.equal((await GET(request("wrong"))).status,401);
  } finally {
-  db.rpc=original;
+  rpc.mock.restore();
   keys.forEach((key,index)=>{if(prior[index]===undefined)delete process.env[key];else process.env[key]=prior[index];});
  }
 });
