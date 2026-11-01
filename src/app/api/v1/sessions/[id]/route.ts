@@ -24,7 +24,7 @@ export async function GET(
   const { data: session, error } = await supabaseAdmin
     .from("sessions")
     .select(
-      "id, status, participantName, participantEmail, summary, insights, themes, sentiment, totalDurationSeconds, createdAt, interview:interviews!inner(id, title, objective, projectId), messages(id, role, content, timestamp)",
+      "id, sync_revision, status, participantName, participantEmail, summary, insights, themes, sentiment, totalDurationSeconds, createdAt, interview:interviews!inner(id, title, objective, projectId), messages(id, role, content, timestamp)",
     )
     .eq("id", sessionId)
     .order("timestamp", { ascending: true, foreignTable: "messages" })
@@ -61,6 +61,7 @@ export async function GET(
   return Response.json({
     data: {
       id: session.id,
+      session_revision: session.sync_revision,
       status: session.status,
       participantName: session.participantName,
       participantEmail: session.participantEmail,
