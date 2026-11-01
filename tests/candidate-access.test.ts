@@ -35,3 +35,26 @@ test("tRPC middleware enforces scope before invoking a procedure", async () => {
   await assert.rejects(caller.session.getById({id:"other-session"}),/FORBIDDEN/);
  } finally {if(previous===undefined)delete process.env.AURAL_EXTERNAL_CANDIDATES;else process.env.AURAL_EXTERNAL_CANDIDATES=previous;}
 });
+
+
+test("monitoring reaches its own authentication without bypassing other API gates", async () => {
+ const envKeys = ["AURAL_EXTERNAL_CANDIDATES", "SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"] as const;
+ const previous = envKeys.map(key => process.env[key]);
+ process.env.AURAL_EXTERNAL_CANDIDATES = "true";
+ process.env.SUPABASE_URL ||= "https://test.supabase.co";
+ process.env.SUPABASE_ANON_KEY ||= "test-placeholder";
+ process.env.SUPABASE_SERVICE_ROLE_KEY ||= "test-placeholder";
+ try {
+  const { proxy } = await import("../src/proxy");
+  const { NextRequest } = await import("next/server");
+  for (const path of ["/api/internal/health", "/api/internal/observations", "/api/session/observations"]) {
+   const response = await proxy(new NextRequest("https://example.test" + path));
+   assert.equal(response.headers.get("x-middleware-next"), "1");
+  }
+  for (const path of ["/api/internal/unknown", "/api/internal/health/unknown", "/api/session/observations/unknown"]) {
+   const response = await proxy(new NextRequest("https://example.test" + path));
+   assert.equal(response.status, 401);
+   assert.equal((await response.json()).error, "sign_in_required");
+  }
+ } finally { envKeys.forEach((key, index) => { if(previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index]; }); }
+});
