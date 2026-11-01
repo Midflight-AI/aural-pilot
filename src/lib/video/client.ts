@@ -1,3 +1,4 @@
+import { observe } from "@/lib/observability/client";
 import type { VideoManifest, VideoTransport } from "./transport";
 /** The invite link is the candidate credential; never send it to storage or playback APIs. */
 export function videoRequestHeaders(pathname = typeof window === "undefined" ? "" : window.location.pathname): Record<string, string> {
@@ -11,16 +12,20 @@ export async function videoRequest(path: string, body: unknown) {
 }
 export const videoTransport: VideoTransport = {
  async upload(manifest,chunk) {
+  const started=performance.now();
+  try {
   const descriptor={sequence:chunk.sequence,bytes:chunk.bytes,sha256:chunk.sha256,endMs:chunk.endMs};
   const path=`/api/session/video/${manifest.id}`;
   const grant=await videoRequest(path,{action:"upload",chunk:descriptor});
-  if(grant.acknowledged) return;
+  if(grant.acknowledged) { observe(manifest.sessionId,"video_upload",performance.now()-started,chunk.bytes); return; }
   // An ambiguous response may mean the immutable object already exists. In either
   // case the authenticated acknowledgement endpoint verifies its bytes and hash.
   try {
    await fetch(grant.url,{method:"PUT",headers:{"Content-Type":"application/octet-stream"},body:chunk.blob,signal:AbortSignal.timeout(30000)});
   } catch { /* Acknowledgement resolves a lost response without overwriting an object. */ }
   await videoRequest(path,{action:"acknowledge",chunk:descriptor});
+  observe(manifest.sessionId,"video_upload",performance.now()-started,chunk.bytes);
+  } catch(error) { observe(manifest.sessionId,"video_upload_failed",performance.now()-started,chunk.bytes); throw error; }
  },
  async finalize(manifest:VideoManifest) { await videoRequest(`/api/session/video/${manifest.id}`,{action:"finalize",manifest}); },
 };

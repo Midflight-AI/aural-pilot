@@ -28,8 +28,9 @@ export async function jsonBody(request: Request): Promise<Record<string, unknown
   try { const value = JSON.parse(Buffer.concat(chunks).toString()); if (!value || Array.isArray(value) || typeof value !== "object") throw new Error(); return value; }
   catch { throw new VideoError(400, "invalid_request"); }
 }
-export async function authorizeSession(sessionId: string, request?: Request, candidateRequest?: Request) {
-  requireSpike(); uuid(sessionId);
+export async function authorizeSession(sessionId: string, request?: Request, candidateRequest?: Request, videoFeatureRequired = true) {
+  if (videoFeatureRequired) requireSpike();
+  uuid(sessionId);
   const { data: session, error } = await db.from("sessions").select("id,interviewId,interview:interviews!inner(projectId,userId)").eq("id", sessionId).maybeSingle();
   if (error) throw new VideoError(503, "session_unavailable");
   const raw = session?.interview;

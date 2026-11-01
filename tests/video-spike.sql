@@ -14,6 +14,7 @@ update video_spike_recordings set created_at=now()-interval '90 days',expires_at
 \ir ../supabase/migrations/20261031091602_video_manual_retention.sql
 \ir ../supabase/migrations/20261031095724_video_processing_queue.sql
 \ir ../supabase/migrations/20261101051116_video_reservation_budget.sql
+\ir ../supabase/migrations/20261101061236_interview_observability.sql
 do $$
 declare v_id uuid:='33333333-3333-4333-8333-333333333333'; token uuid:='44444444-4444-4444-8444-444444444444'; m jsonb;
 begin
@@ -97,5 +98,18 @@ begin
  exception when raise_exception then if sqlerrm<>'recording_too_large' then raise;end if;end;
  if (select count(*) from video_spike_chunks where recording_id=rid)<>20 then raise exception 'failed reservation persisted';end if;
  if (select expires_at from video_spike_recordings where id=rid) is not null then raise exception 'retention changed';end if;
+end $$;
+-- Numeric measurements are idempotent, private, and do not alter retention.
+do $$
+declare sid uuid:='22222222-2222-4222-8222-222222222222'; eid uuid:=gen_random_uuid(); events jsonb;
+begin
+ events:=jsonb_build_array(jsonb_build_object('id',eid,'kind','voice_response','durationMs',1500));
+ perform record_interview_observations(sid,'client',events);
+ perform record_interview_observations(sid,'client',events);
+ if (select count(*) from interview_observations where id=eid)<>1 then raise exception 'duplicate telemetry';end if;
+ if has_table_privilege('anon','public.interview_observations','select') or has_table_privilege('authenticated','public.interview_observations','insert') or has_function_privilege('anon','public.interview_health()','execute') then raise exception 'telemetry grants leaked';end if;
+ if not (select relrowsecurity from pg_class where oid='public.interview_observations'::regclass) then raise exception 'telemetry RLS missing';end if;
+ if (interview_health()->>'windowMinutes')::int<>15 then raise exception 'health query failed';end if;
+ if exists(select 1 from video_spike_recordings where expires_at is not null) then raise exception 'retention changed';end if;
 end $$;
 rollback;

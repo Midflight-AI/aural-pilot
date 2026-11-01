@@ -1,4 +1,5 @@
 "use client";
+import { observe } from "@/lib/observability/client";
 import { useCallback,useEffect,useRef,useState } from "react";
 import { canCaptureVideo,WebcamCapture,VIDEO_MIME } from "@/lib/video/capture";
 import { clearVideoManifest,recoverVideoManifests,videoStore } from "@/lib/video/store";
@@ -44,7 +45,7 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent =
    await videoStore.saveManifest(manifest);
    setRecovery([manifest]);
    await videoRequest("/api/session/video",{id:manifest.id,sessionId,consent:true,consentVersion:"internal-video-spike-v1"});
-   const queue=new VideoUploadQueue(manifest,videoStore,videoTransport,()=>captureRef.current?.interrupt());
+   const queue=new VideoUploadQueue(manifest,videoStore,videoTransport,()=>{observe(sessionId,"video_backlog");captureRef.current?.interrupt();});
    queueRef.current=queue;
    preparedRef.current={camera:cam,queue};setCamera(cam);
   } catch(error) {cam?.getTracks().forEach(track=>track.stop());setState("attention");throw error;}
@@ -58,12 +59,14 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent =
  const finish=useCallback(async()=>{
   if(!captureRef.current) return;
   setState("uploading");
+  const started=performance.now();
   try {
    await captureRef.current.stop();
+   observe(sessionId,"video_finalize",performance.now()-started);
    if(queueRef.current) await clearVideoManifest(queueRef.current.manifest.id);
    setRecovery([]);setState("processing");setCamera(null);
-  } catch {setState("attention");throw new Error("Video upload needs recovery.");}
- },[]);
+  } catch {observe(sessionId,"video_finalize_failed",performance.now()-started);setState("attention");throw new Error("Video upload needs recovery.");}
+ },[sessionId]);
  const retry=useCallback(()=>{
   if(retryTaskRef.current) return retryTaskRef.current;
   retryTaskRef.current=(async()=>{

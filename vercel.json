@@ -1,8 +1,40 @@
 {
- "$schema":"https://openapi.vercel.sh/vercel.json",
+ "$schema": "https://openapi.vercel.sh/vercel.json",
  "functions": {
-  "src/app/api/session/video/**/route.ts": { "regions": ["syd1"] },
-  "src/app/api/internal/video/process/route.ts": { "regions": ["syd1"] }
+  "src/app/api/session/video/**/route.ts": {
+   "regions": [
+    "syd1"
+   ]
+  },
+  "src/app/api/internal/video/process/route.ts": {
+   "regions": [
+    "syd1"
+   ]
+  },
+  "src/app/api/session/observations/route.ts": {
+   "regions": [
+    "syd1"
+   ]
+  },
+  "src/app/api/internal/observations/route.ts": {
+   "regions": [
+    "syd1"
+   ]
+  },
+  "src/app/api/internal/health/route.ts": {
+   "regions": [
+    "syd1"
+   ]
+  }
  },
- "crons":[{"path":"/api/internal/video/process","schedule":"* * * * *"}]
+ "crons": [
+  {
+   "path": "/api/internal/video/process",
+   "schedule": "* * * * *"
+  },
+  {
+   "path": "/api/internal/health",
+   "schedule": "* * * * *"
+  }
+ ]
 }

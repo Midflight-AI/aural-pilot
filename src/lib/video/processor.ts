@@ -50,7 +50,7 @@ export async function processVideoQueue(requestedId?: string): Promise<Processin
    let directory: string | undefined;
    try {
     directory = await mkdtemp(join(tmpdir(), "aural-video-"));
-    const { data: row, error } = await db.from("video_spike_recordings").select("manifest").eq("id", id).single();
+    const { data: row, error } = await db.from("video_spike_recordings").select("manifest,session_id").eq("id", id).single();
     if (error || !row) throw new Error("manifest_unavailable");
     const manifest = row.manifest as VideoManifest;
     validateManifest(manifest);
@@ -106,6 +106,8 @@ export async function processVideoQueue(requestedId?: string): Promise<Processin
     if (commitError || !committed) throw new Error("processing_lease_lost");
     const result: ProcessingResult = { recordingId: id, state: manifest.partial ? "partial" : "ready", totalMs: Date.now() - started, downloadAndRemuxMs, validationMs, uploadMs, durationSeconds: duration, chunks: manifest.chunks.length, workerRegion: process.env.VERCEL_REGION, workerPeakRssMiB: Math.ceil(process.resourceUsage().maxRSS / 1024) };
     results.push(result); console.log(JSON.stringify({ event: "video_processing_complete", ...result }));
+    // Monitoring delivery cannot change an already committed recording into a failure.
+    await Promise.resolve(db.rpc("record_interview_observations", { p_session: row.session_id, p_source: "worker", p_events: [{ id: randomUUID(), kind: "video_processing", durationMs: result.totalMs }] })).then(({error}) => { if(error) console.error("observation_delivery_failed"); }).catch(() => console.error("observation_delivery_failed"));
    } catch (error) {
     const code = processingErrorCode(error);
     // Preserve all source/output objects, including an ambiguous successful commit.

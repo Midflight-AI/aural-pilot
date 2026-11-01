@@ -1,3 +1,4 @@
+import { relayObservations } from "./relay-observability";
 import { verifyRelayTicket } from "../src/lib/voice/relay-ticket";
 /**
  * Backup voice relay using Azure OpenAI Realtime API (gpt-realtime-1.5).
@@ -451,7 +452,7 @@ wss.on("connection", (browserWs) => {
       clearTimeout(timeout);
       browserWs.removeListener("message", handler);
       if (msg.type === "mic_test") void handleMicTest(browserWs);
-      else void handleInterview(browserWs, msg.context as InterviewContext);
+      else void handleInterview(browserWs, msg.context as InterviewContext, typeof msg.sessionId === "string" ? msg.sessionId : "");
     } catch {
       clearTimeout(timeout);
       browserWs.close(1008, "Voice access could not be verified");
@@ -712,7 +713,10 @@ async function handleMicTest(browserWs: WebSocket) {
 
 // ── Interview handler ───────────────────────────────────────────────
 
-async function handleInterview(browserWs: WebSocket, ctx: InterviewContext) {
+async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sessionId: string) {
+  const observations = relayObservations(sessionId);
+  browserWs.once("close", () => observations.close());
+  let modelResponseRequestedAt = 0;
   const sortedQuestions = ctx.questions.sort((a, b) => a.order - b.order);
   const isZh = isChineseInterview(ctx);
   let currentQuestionIndex = ctx.startQuestionIndex ?? 0;
@@ -733,6 +737,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext) {
   let oaiSessionStart = Date.now();
   let reconnecting = false;
   let browserClosed = false;
+  let connectingWs: WebSocket | null = null;
 
   let inputTranscriptBuffer = "";
   let outputTranscriptBuffer = "";
@@ -965,6 +970,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext) {
       ? { type: "response.create", response }
       : { type: "response.create" };
     responseInFlight = true;
+    modelResponseRequestedAt = performance.now();
     oaiWs.send(JSON.stringify(payload));
     log.info(`Requested assistant response (${reason})`);
   }
@@ -1532,11 +1538,13 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext) {
               log.debug(`Ignoring benign OpenAI cancel error: ${errorMessage}`);
               break;
             }
+            observations.emit("voice_provider_error");
             log.error("OpenAI error:", errorMessage);
             break;
           }
 
           case "response.created":
+            if (!modelResponseRequestedAt) modelResponseRequestedAt = performance.now();
             responseInFlight = true;
             break;
 
@@ -1568,6 +1576,8 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext) {
               if (!responseAudioStarted) {
                 responseAudioStarted = true;
                 responseAudioStartedAt = Date.now();
+                if (modelResponseRequestedAt) observations.emit("voice_model_first_audio",performance.now()-modelResponseRequestedAt);
+                modelResponseRequestedAt = 0;
                 for (const t of pendingTtsText) send({ type: "tts_text", data: { text: t } });
                 pendingTtsText = [];
               }
@@ -1755,12 +1765,14 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext) {
             // Detect empty responses and retry: the model sometimes
             // produces responses with no audio and no function calls.
             if (!hadTts && pendingFunctionCalls.length === 0 && respOutputCount === 0 && !interviewDone && !queuedResponse) {
+              observations.emit("voice_empty_response");
               emptyResponseRetries++;
               if (emptyResponseRetries <= MAX_EMPTY_RETRIES) {
                 log.warn(`Empty response (status=${respStatus}, attempt ${emptyResponseRetries}/${MAX_EMPTY_RETRIES}) — nudging model to speak`);
                 requestAssistantResponse(`empty response retry ${emptyResponseRetries}`);
               } else {
                 log.error(`Empty response (status=${respStatus}) — exhausted retries, giving up`);
+                send({ type: "error", message: "The interviewer could not respond. Please reconnect to continue." });
                 emptyResponseRetries = 0;
               }
             } else if (hadTts) {
@@ -1845,10 +1857,12 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext) {
   // ── OpenAI connection ─────────────────────────────────────────────
 
   async function connectOai(): Promise<WebSocket> {
+    if (browserClosed) throw new Error("browser_closed");
     const ws = new WebSocket(OPENAI_WS_URL, {
       headers: { "api-key": AZURE_API_KEY },
     });
-
+    connectingWs = ws;
+    try {
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(() => reject(new Error("OpenAI connect timeout")), 10_000);
       ws.on("open", () => { clearTimeout(t); resolve(); });
@@ -1913,18 +1927,23 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext) {
       ws.on("message", h);
     });
 
+    if (browserClosed) throw new Error("browser_closed");
     return ws;
+    } catch (error) { ws.terminate(); throw error; }
+    finally { if (connectingWs === ws) connectingWs = null; }
   }
 
   async function reconnectOai() {
-    if (reconnecting) return;
+    if (reconnecting || browserClosed) return;
     reconnecting = true;
     const MAX_RETRIES = 3;
 
     await new Promise((r) => setTimeout(r, 500));
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      if (browserClosed) return;
       try {
+        observations.emit("voice_reconnect");
         log.info(`Reconnect attempt ${attempt}/${MAX_RETRIES}...`);
 
         const ws = await connectOai();
@@ -1994,6 +2013,22 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext) {
     throw new Error("All reconnect attempts failed");
   }
 
+  browserWs.on("close", () => {
+    log.info("Browser disconnected");
+    browserClosed = true;
+    connectingWs?.terminate();
+    clearInterval(keepaliveTimer);
+    clearInterval(livenessTimer);
+    clearPendingTransition();
+    clearQuestionPrompt();
+    cleanupVolcAsr();
+    if (pendingInputFlush) clearTimeout(pendingInputFlush);
+    if (pendingAsrUpdate) clearTimeout(pendingAsrUpdate);
+    if (interviewCompleteTimer) clearTimeout(interviewCompleteTimer);
+    oaiWs?.close();
+  });
+
+
   // ── Initial connection ────────────────────────────────────────────
 
   try {
@@ -2027,6 +2062,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext) {
     }));
     requestAssistantResponse("initial greeting", { tool_choice: "none" });
   } catch (err) {
+    observations.emit("voice_connect_failed");
     log.error("Failed to connect to OpenAI:", err);
     send({
       type: "error",
@@ -2297,19 +2333,6 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext) {
     }
   });
 
-  browserWs.on("close", () => {
-    log.info("Browser disconnected");
-    browserClosed = true;
-    clearInterval(keepaliveTimer);
-    clearInterval(livenessTimer);
-    clearPendingTransition();
-    clearQuestionPrompt();
-    cleanupVolcAsr();
-    if (pendingInputFlush) clearTimeout(pendingInputFlush);
-    if (pendingAsrUpdate) clearTimeout(pendingAsrUpdate);
-    if (interviewCompleteTimer) clearTimeout(interviewCompleteTimer);
-    oaiWs?.close();
-  });
 
   browserWs.on("error", (err) => {
     log.error("Browser WS error:", err.message);
