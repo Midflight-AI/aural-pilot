@@ -429,6 +429,7 @@ wss.on("connection", (browserWs) => {
     browserWs.close();
   }, 10000);
 
+  browserWs.once("close", () => clearTimeout(timeout));
   let authorizing = false;
   const handler = async (data: Buffer) => {
     if (authorizing) return;
@@ -574,13 +575,10 @@ async function handleMicTest(browserWs: WebSocket) {
 
   async function connectMicTestOpenAI() {
     for (let attempt = 1; attempt <= 2; attempt++) {
+      if (browserWs.readyState !== WebSocket.OPEN) throw new Error("browser_closed");
       try {
         oaiWs = new WebSocket(OPENAI_WS_URL, { headers: { "api-key": AZURE_API_KEY } });
-        await new Promise<void>((resolve, reject) => {
-          const t = setTimeout(() => reject(new Error("OpenAI connect timeout")), 10_000);
-          oaiWs!.on("open", () => { clearTimeout(t); resolve(); });
-          oaiWs!.on("error", (e) => { clearTimeout(t); reject(e); });
-        });
+        await waitForRealtimeEvent(oaiWs,"session.created");
         break;
       } catch (err) {
         if (attempt < 2) {
@@ -591,18 +589,7 @@ async function handleMicTest(browserWs: WebSocket) {
       }
     }
 
-    await new Promise<void>((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("Session create timeout")), 10_000);
-      const h = (data: Buffer) => {
-        try {
-          const msg = JSON.parse(data.toString());
-          if (msg.type === "session.created") { clearTimeout(t); oaiWs!.removeListener("message", h); resolve(); }
-        } catch { /* ignore */ }
-      };
-      oaiWs!.on("message", h);
-    });
-
-    oaiWs!.send(JSON.stringify({
+    await waitForRealtimeEvent(oaiWs!,"session.updated", () => oaiWs!.send(JSON.stringify({
       type: "session.update",
       session: {
         type: "realtime",
@@ -618,19 +605,7 @@ async function handleMicTest(browserWs: WebSocket) {
           output: { format: { type: "audio/pcm", rate: 24000 }, voice: AZURE_VOICE },
         },
       },
-    }));
-
-    await new Promise<void>((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("Session update timeout")), 10_000);
-      const h = (data: Buffer) => {
-        try {
-          const msg = JSON.parse(data.toString());
-          if (msg.type === "session.updated") { clearTimeout(t); oaiWs!.removeListener("message", h); resolve(); }
-          else if (msg.type === "error") { clearTimeout(t); oaiWs!.removeListener("message", h); reject(new Error(`Session update error: ${JSON.stringify(msg.error)}`)); }
-        } catch { /* ignore */ }
-      };
-      oaiWs!.on("message", h);
-    });
+    })));
 
     let micTestAsrBuffer = "";
     oaiWs!.on("message", (data: Buffer) => {
@@ -664,6 +639,8 @@ async function handleMicTest(browserWs: WebSocket) {
     });
   }
 
+  browserWs.once("close", cleanup);
+
   try {
     if (USE_VOLC_ASR_PRIMARY) {
       await connectMicTestVolcAsr();
@@ -695,10 +672,7 @@ async function handleMicTest(browserWs: WebSocket) {
       } catch { /* ignore */ }
     });
 
-    browserWs.on("close", () => {
-      log.info("Mic test: browser disconnected");
-      cleanup();
-    });
+
   } catch (err) {
     log.error("Mic test failed:", err);
     if (browserWs.readyState === WebSocket.OPEN) {
@@ -935,6 +909,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
   }
 
   function cancelOngoingResponse() {
+    modelResponseRequestedAt = 0;
     const shouldCancel =
       responseInFlight ||
       responseAudioStarted ||

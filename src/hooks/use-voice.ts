@@ -291,7 +291,7 @@ export function useVoice({
       const trimmed = finalText.trim();
       if (!trimmed) return;
 
-      responseObservationRef.current ??= lastMicActivityAtRef.current || performance.now();
+      responseObservationRef.current = lastMicActivityAtRef.current || performance.now();
       responseWatchdogRef.current = setTimeout(() => {
         responseWatchdogRef.current = null;
         const current = stateRef.current;
@@ -381,6 +381,7 @@ export function useVoice({
   );
 
   const cleanup = useCallback(() => {
+    responseObservationRef.current = null;
     clearResponseWatchdog();
     clearAsrInterimWatchdog();
     clearAsrProcessingTimer();

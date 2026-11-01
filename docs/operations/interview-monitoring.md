@@ -16,3 +16,5 @@ Operational events contain only a session UUID, an allow-listed event kind, dura
 Configure the relay's `AURAL_OBSERVABILITY_URL` to the same environment's `/api/internal/observations`. Never send preview session metrics to the production database. The `VOICE_RELAY_AUTH_SECRET` must match the receiver. Telemetry endpoint failures are logged without tokens, transcripts or raw provider responses.
 
 Before release: run remote CI and database access/idempotency tests; verify unauthenticated ingestion/read denial; exercise real concurrent voice sessions and early disconnect, retry, upload recovery, processing and playback. Record exact deployment/image, measured concurrency, outcomes and remaining limits here. Do not infer voice capacity from the video worker benchmark.
+
+The authenticated `/operations` page is restricted to explicit existing staff user IDs in `AURAL_OPERATIONS_USER_IDS`; it fails closed when unset. It shows the same aggregate snapshot without exposing candidate records.
