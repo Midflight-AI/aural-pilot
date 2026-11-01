@@ -2,7 +2,7 @@
 import { useCallback,useEffect,useRef,useState } from "react";
 import { canCaptureVideo,WebcamCapture,VIDEO_MIME } from "@/lib/video/capture";
 import { clearVideoManifest,recoverVideoManifests,videoStore } from "@/lib/video/store";
-import { VideoUploadQueue,type VideoManifest } from "@/lib/video/transport";
+import { VideoUploadQueue,recoverStoredVideo,type VideoManifest } from "@/lib/video/transport";
 import { videoRequest,videoRequestHeaders,videoTransport } from "@/lib/video/client";
 
 export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent = false) {
@@ -69,14 +69,16 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent =
   retryTaskRef.current=(async()=>{
   setState("uploading");
   try {
+   const retained:VideoManifest[]=[];
+   let recovered=false;
    for(const manifest of await recoverVideoManifests(sessionId)) {
     // Reauthorize a possibly lost start response using the original ID and consent.
     await videoRequest("/api/session/video",{id:manifest.id,sessionId,consent:true,consentVersion:"internal-video-spike-v1"});
-    const queue=new VideoUploadQueue(manifest,videoStore,videoTransport,()=>{});
-    if(!manifest.sealed) await queue.seal(true); // Reload loses the undelivered tail.
-    await queue.retry();await clearVideoManifest(manifest.id);
+    if(await recoverStoredVideo(manifest,videoStore,videoTransport)) {
+     await clearVideoManifest(manifest.id);recovered=true;
+    } else retained.push(manifest);
    }
-   setRecovery([]);setState("processing");
+   setRecovery(retained);setState(recovered?"processing":"idle");
   } catch {setState("attention");throw new Error("Recording still needs recovery. Keep this browser data and retry.");}
   })().finally(()=>{retryTaskRef.current=null;});
   return retryTaskRef.current;

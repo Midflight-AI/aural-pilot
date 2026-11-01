@@ -154,3 +154,12 @@ export class VideoUploadQueue {
     await this.transport.finalize(this.manifest);
   }
 }
+
+/** An empty setup reservation has no media to seal. Keep its stable ID for prepare(). */
+export async function recoverStoredVideo(manifest: VideoManifest, store: VideoStore, transport: VideoTransport): Promise<boolean> {
+  if (!manifest.sealed && manifest.chunks.length === 0) return false;
+  const queue = new VideoUploadQueue(manifest, store, transport, () => {});
+  if (!manifest.sealed) await queue.seal(true);
+  await queue.retry();
+  return true;
+}
