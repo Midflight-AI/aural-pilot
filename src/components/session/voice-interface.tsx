@@ -1,4 +1,5 @@
 "use client";
+import { Camera } from "lucide-react";
 import { InterviewHeader } from "@/components/brand/ramp";
 
 import { CodeBlock } from "@/components/code-editor/code-block";
@@ -396,6 +397,8 @@ interface VoiceInterfaceProps {
   recordWebcam?: boolean;
   /** Render in static preview mode — shows full layout without connecting */
   preview?: boolean;
+  /** Show camera placement without requesting a device in the design preview. */
+  previewWebcam?: boolean;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -417,6 +420,7 @@ export function VoiceInterface({
   videoMode = false,
   recordWebcam = false,
   preview = false,
+  previewWebcam = false,
 }: VoiceInterfaceProps) {
   useChunkLoadRecovery();
   useSessionToolChunkPrefetch(!preview);
@@ -2689,7 +2693,11 @@ export function VoiceInterface({
       )}
 
       {/* ── Camera PIP overlay (video mode) — draggable ────── */}
-      {videoSpike.camera && <video muted playsInline autoPlay aria-label="Your webcam preview" className="fixed bottom-4 right-4 w-40 rounded-lg" ref={element => { if (element && element.srcObject !== videoSpike.camera) element.srcObject = videoSpike.camera; }} />}
+      {(videoSpike.camera || (preview && previewWebcam)) && (
+        <div data-testid="webcam-tile" className="absolute bottom-24 right-3 z-20 w-28 overflow-hidden rounded-lg border bg-card shadow-md sm:right-4 sm:w-40">
+          {videoSpike.camera ? <video muted playsInline autoPlay aria-label="Your webcam preview" className="aspect-video w-full object-cover" ref={element => { if (element && element.srcObject !== videoSpike.camera) element.srcObject = videoSpike.camera; }} /> : <div className="flex aspect-video flex-col items-center justify-center gap-1 bg-muted p-2 text-center text-xs text-muted-foreground"><Camera className="h-5 w-5" /><span>Sample webcam position</span></div>}
+        </div>
+      )}
       {videoMode && recording.cameraStream && (
         <DraggablePip>
           <video
