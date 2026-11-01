@@ -1,0 +1,44 @@
+/* Candidate/auth-only Ramp theme. Root scoping includes portalled dialogs and
+   toasts; leaving the route removes the marker and restores the admin theme. */
+:root:has([data-ramp-surface]) {
+  --font-heading: var(--font-body);
+  --background: 40 42.86% 94.51%;
+  --foreground: 224.21 24.68% 15.1%;
+  --card: 0 0% 100%;
+  --card-foreground: var(--foreground);
+  --popover: 0 0% 100%;
+  --popover-foreground: var(--foreground);
+  --primary: 232.04 79.74% 55.49%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 226.67 100% 96.47%;
+  --secondary-foreground: 224.21 24.68% 15.1%;
+  --muted: 226.67 100% 96.47%;
+  --muted-foreground: 222.22 13.71% 38.63%;
+  --accent: 222.92 100% 93.73%;
+  --accent-foreground: var(--foreground);
+  --border: 221.05 27.54% 86.47%;
+  --input: 227.23 22.77% 58.63%;
+  --ring: var(--primary);
+  --destructive: 9.62 85.62% 30%;
+  --destructive-foreground: 0 0% 100%;
+  color-scheme: light;
+}
+.ramp-surface { min-height: 100dvh; background: hsl(var(--background)); color: hsl(var(--foreground)); font-family: var(--font-body), sans-serif; }
+.ramp-header { flex-shrink: 0; min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 24px; background: #334be8; color: white; font-size: 14px; font-weight: 500; }
+.ramp-wordmark { width: 166px; height: auto; }
+:root:has([data-ramp-surface]) [data-slot="button"] { border-radius: 8px; font-weight: 600; }
+:root:has([data-ramp-surface]) [data-slot="button"][data-variant="default"] { background: #334be8; color: white; box-shadow: inset 0 1px 0 #ffffff29, 0 1px 2px #1d22301a; }
+:root:has([data-ramp-surface]) [data-slot="button"][data-variant="default"]:hover { background: #2539b8; }
+:root:has([data-ramp-surface]) [data-slot="button"]:disabled { opacity: .55; box-shadow: none; }
+:root:has([data-ramp-surface]) [data-slot="card"] { border-radius: 12px; box-shadow: none; }
+:root:has([data-ramp-surface]) ::selection { background: #dfe8ff; color: #1d2230; }
+:root:has([data-ramp-surface]) .text-secondary-500,
+:root:has([data-ramp-surface]) .text-secondary-600 { color: #18764f; }
+:root:has([data-ramp-surface]) .bg-secondary-500,
+:root:has([data-ramp-surface]) .bg-secondary-600 { background-color: #1f8f62; }
+:root:has([data-ramp-surface]) .border-secondary-500 { border-color: #1f8f62; }
+@media (max-width: 640px) {
+  .ramp-header { min-height: 56px; padding: 12px 16px; }
+  .ramp-wordmark { width: 145px; }
+  :root:has([data-ramp-surface]) [data-slot="button"] { min-height: 44px; }
+}

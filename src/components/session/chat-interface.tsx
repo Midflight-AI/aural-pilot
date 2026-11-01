@@ -1,4 +1,5 @@
 "use client";
+import { InterviewHeader } from "@/components/brand/ramp";
 
 import { CodeBlock } from "@/components/code-editor/code-block";
 import {
@@ -1369,6 +1370,7 @@ export function ChatInterface({
 
     return (
       <div className="flex h-screen flex-col bg-background">
+        <InterviewHeader candidateOnly />
         {renderSessionHeader(true)}
         {renderFinishDialog()}
 
@@ -1553,6 +1555,7 @@ export function ChatInterface({
 
   return (
     <div className="flex h-screen flex-col bg-background">
+      <InterviewHeader candidateOnly />
       {renderSessionHeader(toolPanelOpen)}
       {renderFinishDialog()}
 

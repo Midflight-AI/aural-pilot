@@ -13,7 +13,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AuralLogo } from "@/components/ui/aural-logo";
+import { InterviewHeader, RampWordmark, useRampBrand } from "@/components/brand/ramp";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { InterviewContext } from "@/hooks/use-voice";
@@ -80,6 +80,8 @@ const STEPS = [
 ];
 
 function WelcomeIllustration() {
+  const ramp = useRampBrand();
+  if (ramp) return <div className="flex justify-center bg-primary px-6 py-8"><RampWordmark reversed /></div>;
   return (
     <div className="relative bg-gradient-to-br from-primary/10 via-primary/5 to-orange-50 px-6 pt-6 pb-0">
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1421,12 +1423,7 @@ export function IntervieweeOnboarding({
   }, [onComplete, recordWebcam]);
 
   const header = (
-    <header className="sticky top-0 z-50 flex h-14 items-center border-b bg-card px-4 sm:px-6">
-      <div className="flex items-center gap-1">
-        <AuralLogo size={28} className="shrink-0" />
-        <span className="font-heading text-base font-bold tracking-[2px]">AURAL</span>
-      </div>
-    </header>
+    <InterviewHeader />
   );
 
   if (step === "info") {

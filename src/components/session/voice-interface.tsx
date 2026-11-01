@@ -1,4 +1,5 @@
 "use client";
+import { InterviewHeader } from "@/components/brand/ramp";
 
 import { CodeBlock } from "@/components/code-editor/code-block";
 import {
@@ -1682,6 +1683,7 @@ export function VoiceInterface({
         </div>
       )}
 
+      <InterviewHeader candidateOnly />
       {/* Header */}
       <div className="shrink-0 border-b bg-card px-3 py-2 md:px-6 md:py-3">
         <div className="flex items-center justify-between">

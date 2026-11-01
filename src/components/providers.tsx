@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
@@ -17,6 +18,8 @@ function getBaseUrl() {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const rampTheme = pathname === "/login" || pathname === "/register" || pathname === "/signup" || pathname?.startsWith("/i/") || pathname?.startsWith("/brand-preview/");
   const [queryClient] = useState(() => new QueryClient());
   const [trpcClient] = useState(() =>
     trpc.createClient({
@@ -37,6 +40,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             <OrgProvider>
               <ProjectProvider>
                 <ThemeProvider
+                  forcedTheme={rampTheme ? "light" : undefined}
                   attribute="class"
                   defaultTheme="system"
                   enableSystem

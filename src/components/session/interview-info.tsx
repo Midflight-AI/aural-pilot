@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { InterviewHeader } from "@/components/brand/ramp";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,10 +25,7 @@ export function InterviewInfo({ interviewTitle, interviewDescription, questionCo
   agreed, onAgreedChange, onNext }: InterviewInfoProps) {
   return (
       <div className={styles.surface}>
-        <header className={styles.header}>
-          <Image src="/brand/ramp-remote/wordmark-reversed.svg" width={1465} height={291} alt="Ramp Remote" priority className={styles.logo} />
-          <span>Interviews</span>
-        </header>
+        <InterviewHeader />
         <nav aria-label="Interview progress" className={styles.steps}>
           <ol>{["Interview Info", "Checklist", "Start"].map((label, index) => (
             <li key={label} aria-current={index === 0 ? "step" : undefined}>
