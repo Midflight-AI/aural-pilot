@@ -18,7 +18,7 @@ const ffprobe = () => process.env.FFPROBE_PATH || join(process.cwd(), "node_modu
 // Fluid Compute can share a process and its scratch disk across requests.
 // This is a resource guard only; database leases provide durable ownership.
 let running = false;
-export type ProcessingResult = { recordingId: string; state: string; totalMs: number; downloadAndRemuxMs?: number; validationMs?: number; uploadMs?: number; durationSeconds?: number; chunks?: number; code?: string };
+export type ProcessingResult = { recordingId: string; state: string; totalMs: number; workerRegion?: string; workerPeakRssMiB?: number; downloadAndRemuxMs?: number; validationMs?: number; uploadMs?: number; durationSeconds?: number; chunks?: number; code?: string };
 
 export async function processVideoQueue(requestedId?: string): Promise<ProcessingResult[]> {
  if (running) return [];
@@ -104,7 +104,7 @@ export async function processVideoQueue(requestedId?: string): Promise<Processin
     const uploadMs = Date.now() - uploadStarted;
     const { data: committed, error: commitError } = await db.rpc("video_spike_complete", { p_id: id, p_token: token, p_path: outputPath, p_duration: duration });
     if (commitError || !committed) throw new Error("processing_lease_lost");
-    const result: ProcessingResult = { recordingId: id, state: manifest.partial ? "partial" : "ready", totalMs: Date.now() - started, downloadAndRemuxMs, validationMs, uploadMs, durationSeconds: duration, chunks: manifest.chunks.length };
+    const result: ProcessingResult = { recordingId: id, state: manifest.partial ? "partial" : "ready", totalMs: Date.now() - started, downloadAndRemuxMs, validationMs, uploadMs, durationSeconds: duration, chunks: manifest.chunks.length, workerRegion: process.env.VERCEL_REGION, workerPeakRssMiB: Math.ceil(process.resourceUsage().maxRSS / 1024) };
     results.push(result); console.log(JSON.stringify({ event: "video_processing_complete", ...result }));
    } catch (error) {
     const code = processingErrorCode(error);
