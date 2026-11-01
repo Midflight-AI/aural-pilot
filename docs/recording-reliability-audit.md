@@ -46,9 +46,17 @@ claim. Targeted transport/access/recovery tests pass locally. Database lifecycle
 budget, backoff, crash recovery, stale workers and tombstones run in disposable
 PostgreSQL CI. Browser setup-outage and upload-retry cases run in remote functional CI.
 
-Pending: exact-commit remote CI, isolated preview processing/retry verification and
-post-deploy verification. Do not treat this document as release completion until
-those results are recorded.
+Remote CI run 41276292748 passed full lint, type checking, unit tests, browser
+functional tests, build and disposable database tests for implementation commit
+494b3dd. The configured isolated Vercel preview passed a real missing-chunk recovery:
+recording 8bd622d1-cb3e-4d4f-9ea4-4e178b2cd1b4 failed with chunk_missing and a retry
+time; after restoring its source chunks, the same recording became ready on attempt
+two. Its 82.55-second, 16-chunk video took 38.549 seconds to process: 32.931 seconds
+download/remux, 2.374 seconds decode validation, 1.897 seconds output upload. This is
+one observed sample, not a latency SLA. Expiry remained null. The test deliberately
+advanced only that fixture's scheduled retry time; production backoff was unchanged.
+
+Production release and post-deploy verification are tracked in PR #6.
 
 ## Remaining boundaries
 
