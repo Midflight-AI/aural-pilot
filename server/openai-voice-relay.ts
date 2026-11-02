@@ -1,4 +1,4 @@
-import { introductionStyle, introductionPrompt, transitionAllowed } from "./introduction-voice-policy";
+import { introductionStyle, introductionPrompt, introductionTurnAction, introductionEvidence, transitionAllowed } from "./introduction-voice-policy";
 import { waitForRealtimeEvent } from "./realtime-handshake";
 import { relayObservations } from "./relay-observability";
 import { verifyRelayTicket } from "../src/lib/voice/relay-ticket";
@@ -279,7 +279,7 @@ function buildSystemPrompt(ctx: InterviewContext, startIdx: number): string {
   }).join("\n");
 
   const currentQ = startIdx + 1;
-  if (introductionStyle(process.env.AURAL_INTERVIEW_STYLE)) return introductionPrompt({ name: ctx.aiName, title: ctx.title, objective: ctx.objective, language: ctx.language, questionList, currentQuestion: currentQ, questionCount: sorted.length });
+  if (introductionStyle(process.env.AURAL_INTERVIEW_STYLE)) return introductionPrompt({ name: ctx.aiName, title: ctx.title, objective: ctx.objective, language: ctx.language, questionList: questionList.split("\n").filter(line => line.startsWith(`  ${currentQ}.`)).join("\n"), currentQuestion: currentQ, questionCount: sorted.length });
 
   if (isZh) {
     return `你是"${ctx.aiName}"，一位${ctx.aiTone}的AI面试官。
@@ -796,11 +796,13 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
 
   const conversationHistory: Array<{ role: "user" | "assistant"; text: string }> = [];
   const MAX_HISTORY_ENTRIES = 30;
+  const introductionAnswers: Array<{question: number; text: string}> = [];
 
   function pushHistory(role: "user" | "assistant", text: string) {
     if (!text.trim()) return;
     if (role === "user" && !text.startsWith("[")) {
       userCommittedWordsThisQuestion += text.trim().split(/\s+/).length;
+      if (isIntroduction) introductionAnswers.push({question: currentQuestionIndex + 1, text: text.trim()});
       if (!toolsEnabled && userCommittedWordsThisQuestion >= MIN_WORDS_BEFORE_TRANSITION) {
         enableTools();
       }
@@ -960,6 +962,10 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       log.info(`Queued assistant response (${reason}) while another response is active`);
       return;
     }
+    if (isIntroduction) {
+      oaiWs.send(JSON.stringify({type:"session.update",session:{type:"realtime",instructions: pendingInterviewComplete ? "The interview is complete. Say one brief farewell and ask no questions." : buildSystemPrompt(ctx,currentQuestionIndex) + "\n" + introductionEvidence(introductionAnswers)}}));
+      log.info(`Introduction response state session=${sessionId} question=${currentQuestionIndex + 1} assistantTurns=${assistantTurnsThisQuestion}`);
+    }
     const payload = response
       ? { type: "response.create", response }
       : { type: "response.create" };
@@ -1022,6 +1028,11 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       return true;
     }
     const currentQuestion = sortedQuestions[currentQuestionIndex];
+    if (isIntroduction) {
+      const action = introductionTurnAction(committedText, assistantTurnsThisQuestion, questionFollowUpLimit(ctx.followUpDepth,currentQuestion));
+      if (action === "wait") { send({type:"asr_cancelled"}); return true; }
+      if (action === "advance") { requestTransition(currentQuestionIndex + 1,"Next Question","budget"); return true; }
+    }
     if (
       currentQuestion &&
       (currentQuestion.type === "CODING" || currentQuestion.type === "WHITEBOARD") &&
@@ -1080,7 +1091,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     speechTranscriptCommitted = true;
     observations.emit("voice_turn_committed", lastVadSpeechEnd ? Math.min(3_600_000, Math.max(0, Date.now() - lastVadSpeechEnd)) : undefined);
     pushHistory("user", committedText);
-    send({ type: "asr_ended", text: committedText });
+    send({ type: "asr_ended", text: committedText, questionIndex: currentQuestionIndex });
     log.info(`Committed user transcript (${reason}): ${JSON.stringify(committedText)}`);
     inputTranscriptBuffer = "";
     volcAsrAccumulator = "";
@@ -1619,6 +1630,10 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
               const userRequested = args.userRequested === true;
               log.info(`OpenAI called signal_question_change → Q${newIdx + 1}${userRequested ? " (user requested)" : ""}`);
 
+              if (isIntroduction && (isTransitioning || newIdx !== currentQuestionIndex + 1)) {
+                pendingFunctionCalls.push({callId:msg.call_id,name:msg.name,args:`Rejected: only the next question index ${currentQuestionIndex + 1} is allowed. Do not speak a different question.`});
+                break;
+              }
               // Already on the requested question — no-op, just tell the model.
               if (newIdx >= 0 && newIdx < sortedQuestions.length && newIdx === currentQuestionIndex) {
                 log.info(`Already on Q${newIdx + 1}, ignoring duplicate signal_question_change`);
@@ -1984,6 +1999,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     clearInterval(keepaliveTimer);
     clearInterval(livenessTimer);
     clearPendingTransition();
+    queuedAssistantResponse = null;
     clearQuestionPrompt();
     cleanupVolcAsr();
     if (pendingInputFlush) clearTimeout(pendingInputFlush);
@@ -2042,9 +2058,11 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
   function requestTransition(
     targetIdx: number,
     directionLabel: string,
-    reason: "button" | "user_request" = "button",
+    reason: "button" | "user_request" | "budget" = "button",
   ) {
+    if (isTransitioning) return;
     clearPendingTransition();
+    queuedAssistantResponse = null;
     clearQuestionPrompt();
     cancelOngoingResponse();
 
@@ -2063,6 +2081,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
           interviewDone = true;
           pendingInterviewComplete = true;
           log.info("Interview ending (button) — waiting for farewell");
+          sendQuestionPrompt("[SYSTEM] The interview is complete. Give one short farewell only. Do not ask any more questions.");
           interviewCompleteTimer = setTimeout(() => {
             if (pendingInterviewComplete) {
               markInterviewComplete("timeout fallback");
@@ -2075,6 +2094,8 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       currentQuestionIndex = targetIdx;
       questionEnteredAt = Date.now();
       userCommittedWordsThisQuestion = 0;
+      assistantTurnsThisQuestion = 0;
+      followUpLimitNoticeSent = false;
       disableTools();
       pushHistory("user", `[Moved to question ${currentQuestionIndex + 1}: "${sortedQuestions[currentQuestionIndex]?.text}"]`);
       send({
@@ -2085,7 +2106,9 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       isTransitioning = false;
       log.info(`${dir} Q${currentQuestionIndex + 1}/${sortedQuestions.length}`);
 
-      const prompt = reason === "user_request"
+      const prompt = reason === "budget"
+        ? `[SYSTEM] The previous question is complete. Ask only the current question ${currentQuestionIndex + 1}: "${sortedQuestions[currentQuestionIndex]?.text}". Do not revisit previous topics.`
+        : reason === "user_request"
         ? `[SYSTEM] The participant explicitly asked to go ${directionLabel.toLowerCase()}. We are now on question ${currentQuestionIndex + 1}: "${sortedQuestions[currentQuestionIndex]?.text}". Briefly acknowledge the transition and introduce this question now.`
         : `[SYSTEM] The participant clicked "${directionLabel}". We are now on question ${currentQuestionIndex + 1}: "${sortedQuestions[currentQuestionIndex]?.text}". Briefly introduce this question now.`;
       sendQuestionPrompt(prompt);
@@ -2229,7 +2252,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
               content: [{ type: "input_text", text }],
             },
           }));
-          requestAssistantResponse("text input");
+          handleCommittedUserText(text,"text input");
         }
       } else if (msg.type === "code_update") {
         const content = (msg.content as string) || "";

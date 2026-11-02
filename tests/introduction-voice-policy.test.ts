@@ -73,3 +73,37 @@ test('introduction explores useful detail without treating thinking phrases as a
  assert.match(p,/Do not return to a completed question/);
  assert.doesNotMatch(p,/Usually go directly to the next question/);
 });
+
+test('hard follow-up ceiling advances after the answer, while thinking and refusals remain distinct',async()=>{
+ const {introductionTurnAction}=await import('../server/introduction-voice-policy');
+ assert.equal(introductionTurnAction('A supportive team',1,1),'respond');
+ assert.equal(introductionTurnAction('Growth and more responsibility',2,1),'advance');
+ assert.equal(introductionTurnAction('I checked three months of records and raised the concern',2,2),'respond');
+ assert.equal(introductionTurnAction('My tip-off started the investigation',3,2),'advance');
+ assert.equal(introductionTurnAction("That's a good one.",3,2),'wait');
+ assert.equal(introductionTurnAction("I can't remember.",1,2),'advance');
+});
+
+test('participant contribution remains available after advancing to another question',async()=>{
+ const {introductionEvidence}=await import('../server/introduction-voice-policy');
+ const evidence=introductionEvidence([{question:3,text:'I reviewed three months of timesheets and initiated the investigation.'}]);
+ assert.match(evidence,/initiated the investigation/);
+ assert.match(evidence,/Ask only for genuinely missing information/);
+});
+
+test('skip and budget transitions reset counters and complete the last question',()=>{
+ const body=callback('requestTransition');
+ const code=`let isTransitioning=false,queuedAssistantResponse=null,currentQuestionIndex=0,userCommittedWordsThisQuestion=6,assistantTurnsThisQuestion=3,followUpLimitNoticeSent=true,questionEnteredAt=0,interviewDone=false,pendingInterviewComplete=false,interviewCompleteTimer=null;
+ const sortedQuestions=[{text:'Team'},{text:'Contribution'}],log={info(){}},events=[],prompts=[],timers=[];
+ const clearPendingTransition=()=>{},clearQuestionPrompt=()=>{},cancelOngoingResponse=()=>{},disableTools=()=>{},pushHistory=()=>{},markInterviewComplete=()=>{};
+ const send=x=>events.push(x),sendQuestionPrompt=x=>prompts.push(x),setTimeout=(f)=>{timers.push(f);return 1};
+ ${body}
+ requestTransition(1,'Next Question','budget');timers.shift()();
+ const moved={currentQuestionIndex,assistantTurnsThisQuestion,followUpLimitNoticeSent};
+ requestTransition(2,'Next Question','budget');timers.shift()();
+ return {moved,interviewDone,prompts};`;
+ const result=new Function(ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)();
+ assert.deepEqual(result.moved,{currentQuestionIndex:1,assistantTurnsThisQuestion:0,followUpLimitNoticeSent:false});
+ assert.equal(result.interviewDone,true);
+ assert.match(result.prompts[1],/farewell only/);
+});

@@ -84,6 +84,7 @@ interface VoiceState {
 }
 
 interface TrackedMessage {
+  questionIndex?: number;
   role: "user" | "assistant";
   content: string;
   source?: "voice" | "chat";
@@ -190,6 +191,7 @@ export function useVoice({
   const currentQuestionIndexRef = useRef(
     interviewContext.startQuestionIndex ?? 0
   );
+  const assistantQuestionIndexRef = useRef(currentQuestionIndexRef.current);
   const totalQuestionsRef = useRef(interviewContext.questions.length);
   const latestCodeUpdateRef = useRef<{ content: string; language: string } | null>(
     null
@@ -432,6 +434,7 @@ export function useVoice({
     onAIResponseRef.current?.(trimmed);
     trackedMessagesRef.current.push({
       role: "assistant",
+      questionIndex: assistantQuestionIndexRef.current,
       content: trimmed,
     });
     log.debug(`Tracked ASSISTANT (${reason}): "${trimmed.slice(0, 60)}..."`);
@@ -606,6 +609,7 @@ export function useVoice({
       if (firstQueuedAudioAtRef.current === null) {
         firstQueuedAudioAtRef.current = performance.now();
         ttsUtteranceStartSessionRef.current = playbackCommitSessionRef.current;
+              assistantQuestionIndexRef.current = currentQuestionIndexRef.current;
       }
       queuedAudioChunksRef.current.push(float32);
       queuedAudioSamplesRef.current += float32.length;
@@ -765,7 +769,7 @@ export function useVoice({
       // before this is called by the question_change handler).
       const pendingAsrText = asrBufferRef.current.trim();
       if (pendingAsrText) {
-        trackedMessagesRef.current.push({ role: "user", content: pendingAsrText });
+        trackedMessagesRef.current.push({ role: "user", questionIndex: currentQuestionIndexRef.current, content: pendingAsrText });
         asrBufferRef.current = "";
       }
 
@@ -998,6 +1002,7 @@ export function useVoice({
               onTranscript?.(finalText, true);
               trackedMessagesRef.current.push({
                 role: "user",
+                questionIndex: typeof msg.questionIndex === "number" ? msg.questionIndex : currentQuestionIndexRef.current,
                 content: finalText,
               });
               log.debug(
@@ -1032,6 +1037,7 @@ export function useVoice({
             chatBufferRef.current += text;
             if (wasEmpty) {
               ttsUtteranceStartSessionRef.current = playbackCommitSessionRef.current;
+              assistantQuestionIndexRef.current = currentQuestionIndexRef.current;
             }
             setState((s) => ({
               ...s,
@@ -1053,6 +1059,7 @@ export function useVoice({
             chatBufferRef.current += (chatBufferRef.current ? " " : "") + text;
             if (wasEmpty) {
               ttsUtteranceStartSessionRef.current = playbackCommitSessionRef.current;
+              assistantQuestionIndexRef.current = currentQuestionIndexRef.current;
             }
             setState((s) => ({
               ...s,
@@ -1141,7 +1148,13 @@ export function useVoice({
           const total = msg.totalQuestions as number;
 
           // Persist messages from the previous question (fire-and-forget)
+          const pendingAnswer = asrBufferRef.current.trim();
+          if (pendingAnswer) {
+            trackedMessagesRef.current.push({role:"user",content:pendingAnswer,questionIndex:currentQuestionIndexRef.current});
+            asrBufferRef.current = "";
+          }
           saveProgress(idx);
+          currentQuestionIndexRef.current = idx;
 
           setState((s) => ({
             ...s,
@@ -1408,7 +1421,7 @@ export function useVoice({
       const connector = relayConnectorRef.current;
       if (!connector?.isReady) return;
 
-      trackedMessagesRef.current.push({ role: "user", content: trimmed, source: "chat" });
+      trackedMessagesRef.current.push({ role: "user", questionIndex: currentQuestionIndexRef.current, content: trimmed, source: "chat" });
       lastSentChatInputRef.current = {
         text: trimmed.replace(/\s+/g, " ").trim().toLowerCase(),
         at: Date.now(),
@@ -1439,13 +1452,14 @@ export function useVoice({
     // Flush any pending buffers before saving
     const pendingAsrText = asrBufferRef.current.trim();
     if (pendingAsrText) {
-      trackedMessagesRef.current.push({ role: "user", content: pendingAsrText });
+      trackedMessagesRef.current.push({ role: "user", questionIndex: currentQuestionIndexRef.current, content: pendingAsrText });
       asrBufferRef.current = "";
     }
     const pendingChatText = chatBufferRef.current.trim();
     if (pendingChatText) {
       trackedMessagesRef.current.push({
         role: "assistant",
+        questionIndex: assistantQuestionIndexRef.current,
         content: pendingChatText,
       });
       chatBufferRef.current = "";
