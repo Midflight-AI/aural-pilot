@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 // Deliberately no free-text fields, transcripts, URLs, tokens or candidate details.
-export const observationKinds = ["voice_connect", "voice_connect_failed", "voice_reconnect", "voice_response", "voice_timeout", "voice_asr_timeout", "voice_model_first_audio", "voice_provider_error", "voice_empty_response", "video_upload", "video_upload_failed", "video_backlog", "video_finalize", "video_finalize_failed", "video_processing", "video_processing_failed"] as const;
+export const observationKinds = ["mic_test_started", "mic_playback_finished", "mic_playback_failed", "mic_connect", "mic_capture_ready", "mic_first_frame", "mic_relay_ready", "mic_listening", "mic_passed", "mic_capture_failed", "mic_relay_failed", "mic_timeout_failed", "voice_connect", "voice_connect_failed", "voice_reconnect", "voice_response", "voice_timeout", "voice_asr_timeout", "voice_model_first_audio", "voice_provider_error", "voice_empty_response", "video_upload", "video_upload_failed", "video_backlog", "video_finalize", "video_finalize_failed", "video_processing", "video_processing_failed"] as const;
 export const observationSchema = z.object({
   id: z.uuid(), kind: z.enum(observationKinds),
   durationMs: z.number().finite().min(0).max(3_600_000).optional(),

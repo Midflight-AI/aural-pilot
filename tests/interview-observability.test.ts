@@ -41,3 +41,17 @@ test("health reports failures, slow response population and stuck work; quiet pe
   assert.deepEqual(healthFindings({ ...healthy, metrics: [metric] }), []);
   assert.deepEqual(healthFindings({ ...healthy, stuckRecordings: 1, metrics: [{ ...metric, samples: 5 }, { ...metric, kind: "voice_timeout", samples: 1 }] }), ["recording_completion_delayed", "voice_response_slow", "voice_timeout"]);
 });
+
+import { micCheckFailureMessage } from "../src/lib/voice/mic-check-result";
+test("microphone failures remain distinct and reach operational health without speech content", () => {
+  for (const reason of ["capture", "relay", "timeout"] as const) {
+    const kind = `mic_${reason}_failed`;
+    assert.equal(observationSchema.safeParse({id:randomUUID(),kind,durationMs:123}).success,true);
+    assert.deepEqual(healthFindings({windowMinutes:15,stuckRecordings:0,failedRecordings:0,unrecoveredUploads:0,metrics:[{source:"client",kind,samples:1,p50_ms:123,p95_ms:123,bytes:null}]}),[kind]);
+  }
+  assert.match(micCheckFailureMessage("relay"), /voice service/i);
+  assert.doesNotMatch(micCheckFailureMessage("relay"), /couldn't detect your voice/i);
+  assert.match(micCheckFailureMessage("capture"), /permission/);
+  assert.match(micCheckFailureMessage("timeout"), /25 seconds/);
+  assert.equal(observationSchema.safeParse({id:randomUUID(),kind:"mic_first_frame",transcript:"private speech"}).success,false);
+});

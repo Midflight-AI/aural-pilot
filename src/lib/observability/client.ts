@@ -28,3 +28,6 @@ export function observe(sessionId: string, kind: ObservationKind, durationMs?: n
     document.addEventListener("visibilitychange", () => { if (document.hidden) flush(); });
   }
 }
+
+/** Flush terminal checklist diagnostics immediately; transport remains non-blocking. */
+export async function flushObservations(sessionId: string) { await queues.get(sessionId)?.flush(); }
