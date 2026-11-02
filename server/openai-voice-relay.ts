@@ -1089,6 +1089,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
         .then(plan=>{
           if(epoch!==introductionPlanEpoch || browserClosed || vadSpeechActive || questionIndex!==currentQuestionIndex)return;
           log.info(`Introduction decision session=${sessionId} question=${questionIndex+1} action=${plan.action} remaining=${questionFollowUpLimit(ctx.followUpDepth,currentQuestion)-Math.max(0,assistantTurnsThisQuestion-1)}`);
+          introductionPlanAbort=null;
           introductionRecognition=plan.recognition;
           if(plan.action==='advance'){requestTransition(questionIndex+1,"Next Question","budget");return;}
           plannedIntroductionSpeech=`${plan.recognition} ${plan.question}`.trim();
@@ -1096,6 +1097,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
           requestAssistantResponse("approved introduction follow-up");
         }).catch(()=>{
           if(epoch!==introductionPlanEpoch || browserClosed)return;
+          introductionPlanAbort=null;
           observations.emit("voice_provider_error");
           log.error(`Introduction planning failed session=${sessionId} question=${questionIndex+1}`);
           send({type:"error",message:"The interviewer could not prepare a response. Please repeat your answer or reconnect to retry."});
@@ -2310,6 +2312,9 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
           sendAudioToVolc(pcm16k);
         }
         } else if (msg.type === "text_input" && msg.content) {
+          // The browser watchdog may replay after eight seconds. A bounded planner/TTS
+          // request already owns this turn; do not cancel it or duplicate its evidence.
+          if (isIntroduction && msg.replay && (responseInFlight || (introductionPlanAbort && !introductionPlanAbort.signal.aborted))) return;
           const text = (msg.content as string).trim();
           if (text) {
             lastUserInput = Date.now();
