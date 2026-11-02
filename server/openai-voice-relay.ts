@@ -1,3 +1,4 @@
+import { introductionStyle, introductionPrompt, transitionAllowed } from "./introduction-voice-policy";
 import { waitForRealtimeEvent } from "./realtime-handshake";
 import { relayObservations } from "./relay-observability";
 import { verifyRelayTicket } from "../src/lib/voice/relay-ticket";
@@ -278,6 +279,7 @@ function buildSystemPrompt(ctx: InterviewContext, startIdx: number): string {
   }).join("\n");
 
   const currentQ = startIdx + 1;
+  if (introductionStyle(process.env.AURAL_INTERVIEW_STYLE)) return introductionPrompt({ name: ctx.aiName, title: ctx.title, objective: ctx.objective, language: ctx.language, questionList, currentQuestion: currentQ, questionCount: sorted.length });
 
   if (isZh) {
     return `你是"${ctx.aiName}"，一位${ctx.aiTone}的AI面试官。
@@ -705,8 +707,9 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
   const isZh = isChineseInterview(ctx);
   let currentQuestionIndex = ctx.startQuestionIndex ?? 0;
   let questionEnteredAt = Date.now();
-  const MIN_QUESTION_DWELL_MS = 15_000;
-  const MIN_WORDS_BEFORE_TRANSITION = 20;
+  const isIntroduction = introductionStyle(process.env.AURAL_INTERVIEW_STYLE);
+  const MIN_QUESTION_DWELL_MS = isIntroduction ? 0 : 15_000;
+  const MIN_WORDS_BEFORE_TRANSITION = isIntroduction ? 1 : 20;
   let userCommittedWordsThisQuestion = 0;
 
   /** Assistant turns the participant actually heard on the current question.
@@ -754,6 +757,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
   let pendingFunctionCalls: Array<{ callId: string; name: string; args: string }> = [];
 
   function flushUserInput() {
+    if (vadSpeechActive) return;
     if (pendingInputFlush) { clearTimeout(pendingInputFlush); pendingInputFlush = null; }
     const committedText = commitUserTranscript("flush");
     if (committedText) {
@@ -939,6 +943,9 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
   }
 
   function requestAssistantResponse(reason: string, response?: Record<string, unknown>) {
+    // Never queue stale answers while the participant has resumed speaking.
+    // Their next committed turn will request the current response.
+    if (vadSpeechActive) { observations.emit("voice_response_deferred"); return; }
     if (
       !oaiWs ||
       oaiWs.readyState !== WebSocket.OPEN ||
@@ -957,6 +964,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       ? { type: "response.create", response }
       : { type: "response.create" };
     responseInFlight = true;
+    observations.emit("voice_response_requested", lastVadSpeechEnd ? Math.min(3_600_000, Math.max(0, Date.now() - lastVadSpeechEnd)) : undefined);
     modelResponseRequestedAt = performance.now();
     oaiWs.send(JSON.stringify(payload));
     clearResponseWait();
@@ -1070,6 +1078,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     if (!committedText) return "";
 
     speechTranscriptCommitted = true;
+    observations.emit("voice_turn_committed", lastVadSpeechEnd ? Math.min(3_600_000, Math.max(0, Date.now() - lastVadSpeechEnd)) : undefined);
     pushHistory("user", committedText);
     send({ type: "asr_ended", text: committedText });
     log.info(`Committed user transcript (${reason}): ${JSON.stringify(committedText)}`);
@@ -1084,7 +1093,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     clearSpeechFinalizeTimer();
     pendingSpeechFinalize = setTimeout(() => {
       pendingSpeechFinalize = null;
-      if (speechTranscriptCommitted || !bestAvailableTranscript()) return;
+      if (vadSpeechActive || speechTranscriptCommitted || !bestAvailableTranscript()) return;
       if (!transcriptLooksStable()) {
         const now = Date.now();
         const waitForStability = Math.max(
@@ -1102,6 +1111,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
   }
 
   function finalizeUserTurn(reason: string, requestResponse = true): string {
+    if (vadSpeechActive) return "";
     const committed = commitUserTranscript(reason);
     if (committed && requestResponse) {
       handleCommittedUserText(committed, reason);
@@ -1189,6 +1199,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     }
     cancelOngoingResponse();
     clearSpeechFinalizeTimer();
+    if (pendingInputFlush) { clearTimeout(pendingInputFlush); pendingInputFlush = null; }
     vadSpeechActive = true;
     lastTranscriptUpdateAt = 0;
     if (speechTranscriptCommitted) {
@@ -1625,8 +1636,8 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
               const dwellMs = Date.now() - questionEnteredAt;
               const isForward = newIdx > currentQuestionIndex && newIdx < sortedQuestions.length;
               const needsWordGuard = isForward && !userRequested;
-              if (newIdx < sortedQuestions.length && (lastUserInput === 0 || dwellMs < MIN_QUESTION_DWELL_MS || (needsWordGuard && userCommittedWordsThisQuestion < MIN_WORDS_BEFORE_TRANSITION))) {
-                const reason = lastUserInput === 0
+              if (!transitionAllowed({introduction:isIntroduction,speechActive:vadSpeechActive,words:userCommittedWordsThisQuestion,dwellMs,userRequested,forward:isForward})) {
+                const reason = vadSpeechActive ? "the participant is still speaking" : userCommittedWordsThisQuestion === 0
                   ? "the participant has not spoken yet"
                   : (needsWordGuard && userCommittedWordsThisQuestion < MIN_WORDS_BEFORE_TRANSITION)
                     ? `only ${userCommittedWordsThisQuestion} word(s) from participant (minimum ${MIN_WORDS_BEFORE_TRANSITION})`
@@ -1635,7 +1646,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
                 pendingFunctionCalls.push({
                   callId: msg.call_id,
                   name: msg.name,
-                  args: `Rejected: ${reason}. You MUST continue discussing question ${currentQuestionIndex + 1} and wait for a substantive response before calling signal_question_change. Do NOT verbally say you are moving to another question — the transition was blocked.`,
+                  args: `Rejected: ${reason}. You MUST continue discussing question ${currentQuestionIndex + 1} and wait for the participant to finish their answer before calling signal_question_change. Do NOT verbally say you are moving to another question — the transition was blocked.`,
                 });
                 break;
               }

@@ -16,6 +16,7 @@ update video_spike_recordings set created_at=now()-interval '90 days',expires_at
 \ir ../supabase/migrations/20261101051116_video_reservation_budget.sql
 \ir ../supabase/migrations/20261101062051_interview_observability.sql
 \ir ../supabase/migrations/20261102084020_microphone_check_observations.sql
+\ir ../supabase/migrations/20261102090823_introduction_turn_observations.sql
 do $$
 declare v_id uuid:='33333333-3333-4333-8333-333333333333'; token uuid:='44444444-4444-4444-8444-444444444444'; m jsonb;
 begin
