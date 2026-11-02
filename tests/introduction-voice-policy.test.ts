@@ -33,6 +33,7 @@ function callback(name:string){
 }
 function harness(){
  const body=`
+ let introductionPlanEpoch=0,introductionPlanAbort=null;
  let vadSpeechActive=false,pendingInputFlush=null,pendingSpeechFinalize=null,queuedAssistantResponse=null,
  speechStopForwardGraceUntil=0,lastTranscriptUpdateAt=0,speechTranscriptCommitted=false;
  const USER_INPUT_FLUSH_MS=3000;
@@ -93,7 +94,7 @@ test('participant contribution remains available after advancing to another ques
 
 test('skip and budget transitions reset counters and complete the last question',()=>{
  const body=callback('requestTransition');
- const code=`let isTransitioning=false,queuedAssistantResponse=null,currentQuestionIndex=0,userCommittedWordsThisQuestion=6,assistantTurnsThisQuestion=3,followUpLimitNoticeSent=true,questionEnteredAt=0,interviewDone=false,pendingInterviewComplete=false,interviewCompleteTimer=null;
+ const code=`let introductionPlanEpoch=0,introductionPlanAbort=null,plannedIntroductionSpeech=null; let isTransitioning=false,queuedAssistantResponse=null,currentQuestionIndex=0,userCommittedWordsThisQuestion=6,assistantTurnsThisQuestion=3,followUpLimitNoticeSent=true,questionEnteredAt=0,interviewDone=false,pendingInterviewComplete=false,interviewCompleteTimer=null;
  const sortedQuestions=[{text:'Team'},{text:'Contribution'}],log={info(){}},events=[],prompts=[],timers=[];
  const clearPendingTransition=()=>{},clearQuestionPrompt=()=>{},cancelOngoingResponse=()=>{},disableTools=()=>{},pushHistory=()=>{},markInterviewComplete=()=>{};
  const send=x=>events.push(x),sendQuestionPrompt=x=>prompts.push(x),setTimeout=(f)=>{timers.push(f);return 1};
@@ -111,7 +112,15 @@ test('skip and budget transitions reset counters and complete the last question'
 
 test('introduction responses exclude stale interviewer turns and request the authoritative question',()=>{
  const code=callback('requestAssistantResponse');
- assert.match(code,/conversation: "none"/);
- assert.match(code,/Ask this current question verbatim/);
- assert.match(code,/Never speak a transition or another topic before that tool is accepted/);
+ assert.match(code,/conversation:\s*"none"/);
+ assert.match(code,/text-to-speech reader/);
+ assert.match(code,/tools:\[\],tool_choice:"none"/);
+});
+
+
+test('structured planner rejects missing information and malformed decisions',async()=>{
+ const {validateIntroductionPlan}=await import('../server/introduction-planner');
+ assert.throws(()=>validateIntroductionPlan({action:'follow_up',question:'What did you contribute?',recognition:'',missingDetail:''}));
+ assert.throws(()=>validateIntroductionPlan({action:'unknown',question:'',recognition:'',missingDetail:''}));
+ assert.deepEqual(validateIntroductionPlan({action:'advance',question:'',recognition:'You initiated the investigation.',missingDetail:''}),{action:'advance',question:'',recognition:'You initiated the investigation.',missingDetail:''});
 });
