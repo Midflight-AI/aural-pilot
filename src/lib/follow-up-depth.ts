@@ -49,3 +49,11 @@ export function maxFollowUpsForDepth(
     ? MAX_FOLLOW_UPS_RESEARCH[normalized]
     : MAX_FOLLOW_UPS[normalized];
 }
+
+/** An explicit per-question cap takes priority; legacy templates retain depth semantics. */
+export function questionFollowUpLimit(depth: string | null | undefined, question?: { type?: string; options?: unknown }): number {
+ const options = question?.options;
+ const cap = options && typeof options === "object" ? (options as Record<string, unknown>).maxFollowUps : undefined;
+ return typeof cap === "number" && Number.isInteger(cap) && cap >= 0 && cap <= 2
+   ? cap : maxFollowUpsForDepth(depth, question?.type);
+}

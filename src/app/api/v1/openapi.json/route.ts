@@ -16,7 +16,7 @@ const spec = {
 
 **Authentication:** Send your developer key in the \`Authorization\` header as a Bearer token: \`Authorization: Bearer dlv_xxx\`. Keys are organization-scoped; list and mutation operations only apply to projects your key can access.
 
-**Retry-safe creation:** When invitation lifecycle is enabled, send \`Idempotency-Key\` on interview/candidate creation; repeat the identical payload after a timeout. Reusing a key for different data returns 409. Keyed interview creation accepts initial \`questions:[{text}]\` atomically. Keyed candidates accept \`inviteExpiresAt\`.
+**Retry-safe creation:** When invitation lifecycle is enabled, send \`Idempotency-Key\` on interview/candidate creation; repeat the identical payload after a timeout. Reusing a key for different data returns 409. Keyed interview creation accepts initial \`questions:[{text,isRequired?,maxFollowUps?}]\` atomically. Keyed candidates accept \`inviteExpiresAt\`.
 
 **Typical interview workflow**
 
@@ -748,6 +748,8 @@ To run an interview: 1. Create interview (\`POST /interviews\`), 2. Add question
         type: "object",
         required: ["title"],
         properties: {
+          projectId: { type: "string", description: "Accessible project ID; required when the key can access more than one project." },
+          questions: { type: "array", maxItems: 100, description: "Atomic initial questions; requires Idempotency-Key and enabled invitation lifecycle.", items: { type: "object", required: ["text"], additionalProperties: false, properties: { text: { type: "string", minLength: 1, maxLength: 2000 }, isRequired: { type: "boolean" }, maxFollowUps: { type: "integer", minimum: 0, maximum: 2 } } } },
           title: { type: "string", minLength: 1, example: "Product Manager Screen" },
           description: { type: "string", example: "Focus on prioritization and metrics." },
           objective: { type: "string", example: "Evaluate decision-making under ambiguity." },

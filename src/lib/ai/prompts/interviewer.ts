@@ -1,4 +1,4 @@
-import { maxFollowUpsForDepth } from "@/lib/follow-up-depth";
+import { maxFollowUpsForDepth, questionFollowUpLimit } from "@/lib/follow-up-depth";
 import type { Tables } from "@/lib/supabase/types";
 import type { LLMMessage } from "../types";
 
@@ -13,7 +13,7 @@ export function buildInterviewerPrompt(ctx: InterviewContext): LLMMessage[] {
 
   const formattedQuestions = interview.questions
     .map((q, i) => {
-      let line = `${i + 1}. [${q.type}] ${q.text}`;
+      let line = `${i + 1}. [${q.type}] ${q.text} (maximum follow-ups: ${questionFollowUpLimit(interview.followUpDepth, q)}; ${q.isRequired ? "required" : "optional, allow skipping"})`;
       if (q.description) line += ` (${q.description})`;
       const opts = q.options as { options: string[]; allowMultiple?: boolean } | null;
       const qType = q.type as string;
@@ -30,7 +30,7 @@ export function buildInterviewerPrompt(ctx: InterviewContext): LLMMessage[] {
     interview.videoEnabled && "Video",
   ].filter(Boolean).join(", ");
 
-  const maxFollowUps = maxFollowUpsForDepth(interview.followUpDepth);
+  const maxFollowUps = interview.questions.length ? Math.max(...interview.questions.map(q => questionFollowUpLimit(interview.followUpDepth, { options: q.options }))) : maxFollowUpsForDepth(interview.followUpDepth);
   const maxResearchFollowUps = maxFollowUpsForDepth(
     interview.followUpDepth,
     "RESEARCH",
@@ -53,6 +53,7 @@ YOUR ROLE:
 5. Never ask multiple questions at once
 6. Keep track of what has been discussed to avoid repetition
 
+Follow the per-question limits in the script; they override the overall depth setting below.
 FOLLOW-UP STRATEGY (${interview.followUpDepth} depth — a HARD LIMIT of ${maxFollowUps} follow-up${maxFollowUps === 1 ? "" : "s"} per scripted question):
 ${maxFollowUps === 0
     ? "- Ask only the scripted questions. Once the participant has answered, move on\n- Probe only if their answer was unintelligible or clearly about a different topic"

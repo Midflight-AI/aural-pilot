@@ -1,4 +1,7 @@
 "use client";
+import { observe, flushObservations } from "@/lib/observability/client";
+import { micCheckFailureMessage } from "@/lib/voice/mic-check-result";
+import type { ObservationKind } from "@/lib/observability/events";
 import { videoRequestHeaders } from "@/lib/video/client";
 
 import { InterviewInfo } from "./interview-info";
@@ -491,7 +494,7 @@ function extractMicTestAsrText(msg: Record<string, unknown>): string {
   return "";
 }
 
-function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean; onDone: () => void; language?: string; allowSkip?: boolean }) {
+function MicCheck({ done, onDone, language, sessionId, allowSkip = true }: { done: boolean; onDone: () => void; language?: string; sessionId?: string; allowSkip?: boolean }) {
   const [phase, setPhase] = useState<MicPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [showSkipDialog, setShowSkipDialog] = useState(false);
@@ -507,12 +510,19 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
   const listenDelayRef = useRef<number | null>(null);
   const listenTimeoutRef = useRef<number | null>(null);
 
+  const cancelCaptureRef = useRef<(() => void) | null>(null);
+  const trace = useCallback((kind: ObservationKind, durationMs?: number) => {
+    if (sessionId) observe(sessionId, kind, durationMs);
+  }, [sessionId]);
+
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
   const languageRef = useRef(language);
   languageRef.current = language;
 
   const stopAll = useCallback(() => {
+    cancelCaptureRef.current?.();
+    cancelCaptureRef.current = null;
     if (listenDelayRef.current !== null) {
       window.clearTimeout(listenDelayRef.current);
       listenDelayRef.current = null;
@@ -591,9 +601,12 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
   const startListening = useCallback(() => {
     setPhase("connecting");
     setTranscript("");
+    const startedAt = performance.now();
+    trace("mic_connect");
 
     let lastAsrText = "";
     let handled = false;
+    cancelCaptureRef.current = () => { handled = true; };
     let micStarted = false;
     let captureStartedAt = 0;
     let micReady = false;
@@ -602,6 +615,7 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
 
     const markListeningReady = () => {
       if (handled || !micReady || !relayReady) return;
+      trace("mic_listening", performance.now() - startedAt);
       setPhase("listening");
     };
 
@@ -614,9 +628,13 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
       }
     };
 
-    const finish = (text: string) => {
+    const finish = (text: string, failure?: "capture" | "relay" | "timeout") => {
       if (handled) return;
       handled = true;
+      cancelCaptureRef.current = null;
+      const kind = failure ? `mic_${failure}_failed` as const : text.trim() ? "mic_passed" : "mic_timeout_failed";
+      trace(kind, performance.now() - startedAt);
+      if (sessionId) void flushObservations(sessionId);
       pendingAudio.length = 0;
       if (listenTimeoutRef.current !== null) {
         window.clearTimeout(listenTimeoutRef.current);
@@ -633,7 +651,10 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
       }
       relayConnectorRef.current?.close();
       relayConnectorRef.current = null;
-      if (text.trim()) {
+      if (failure) {
+        setError(micCheckFailureMessage(failure));
+        setPhase("idle");
+      } else if (text.trim()) {
         analyzeResponse(text);
       } else {
         analyzeResponse("");
@@ -654,6 +675,7 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
             autoGainControl: true,
           },
         });
+        if (handled) { stream.getTracks().forEach(track => track.stop()); return; }
         micStreamRef.current = stream;
 
         const ctx = new AudioContext({ sampleRate: 16000 });
@@ -679,8 +701,9 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
         `;
         const blob = new Blob([workletCode], { type: "application/javascript" });
         const workletUrl = URL.createObjectURL(blob);
-        await ctx.audioWorklet.addModule(workletUrl);
-        URL.revokeObjectURL(workletUrl);
+        try { await ctx.audioWorklet.addModule(workletUrl); }
+        finally { URL.revokeObjectURL(workletUrl); }
+        if (handled) { stream.getTracks().forEach(track => track.stop()); await ctx.close().catch(() => {}); return; }
 
         const source = ctx.createMediaStreamSource(stream);
         const worklet = new AudioWorkletNode(ctx, "mic-processor");
@@ -689,11 +712,14 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
         source.connect(worklet);
         worklet.connect(silentGain);
         silentGain.connect(ctx.destination);
+        trace("mic_capture_ready", performance.now() - startedAt);
         micReady = true;
+        let observedFrame = false;
         markListeningReady();
 
         worklet.port.onmessage = (e) => {
           if (handled) return;
+          if (!observedFrame) { observedFrame = true; trace("mic_first_frame", performance.now() - startedAt); }
           const input = e.data as Float32Array;
           const hex = encodeMicAudioChunk(input);
           const connector = relayConnectorRef.current;
@@ -705,7 +731,7 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
           connector.sendJson({ type: "audio", data: hex });
         };
       } catch {
-        finish("");
+        finish("", "capture");
       }
     };
 
@@ -722,6 +748,7 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
       }),
       buildInitMessage: () => ({ type: "mic_test", language: languageRef.current }),
       onConnected: () => {
+        trace("mic_relay_ready", performance.now() - startedAt);
         relayReady = true;
         flushPendingAudio();
         markListeningReady();
@@ -760,7 +787,7 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
           if (activeConnector.canFailover) {
             void activeConnector.failover("mic test relay disconnected");
           } else {
-            finish(lastAsrText);
+            finish("", "relay");
           }
         } else if (msg.type === "error") {
           const message = (msg.message as string) || "";
@@ -770,13 +797,13 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
           ) {
             return;
           }
-          finish(lastAsrText);
+          finish("", "relay");
         } else if (msg.type === "timeout") {
-          finish(lastAsrText);
+          finish("", "timeout");
         }
       },
       onPermanentFailure: () => {
-        if (!handled) finish(lastAsrText);
+        if (!handled) finish("", "relay");
       },
     });
 
@@ -786,14 +813,14 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
     // being lost and makes "Listening" mean the whole pipeline is ready.
     void startMicCapture();
     void connector.connect().catch(() => {
-      if (!handled) finish(lastAsrText);
+      if (!handled) finish("", "relay");
     });
 
     listenTimeoutRef.current = window.setTimeout(() => {
       listenTimeoutRef.current = null;
-      if (!handled) finish(lastAsrText);
+      if (!handled) finish(lastAsrText, lastAsrText ? undefined : "timeout");
     }, 25000);
-  }, [analyzeResponse, stopTtsPlayback]);
+  }, [analyzeResponse, stopTtsPlayback, sessionId, trace]);
 
   const startListeningAfterPlayback = useCallback(() => {
     if (listenDelayRef.current !== null) {
@@ -809,13 +836,16 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
     stopTtsPlayback();
     getSpeechSynthesisApi()?.cancel();
     setError(null);
+    trace("mic_test_started");
     setPhase("requesting");
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach((t) => t.stop());
     } catch {
-      setError("Unable to access microphone. Please check permissions.");
+      trace("mic_capture_failed");
+      if (sessionId) void flushObservations(sessionId);
+      setError(micCheckFailureMessage("capture"));
       setPhase("idle");
       return;
     }
@@ -889,15 +919,18 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
           audioObjectUrlRef.current = null;
         }
       }
+      trace("mic_playback_finished");
       startListeningAfterPlayback();
       return;
     } catch (err) {
       abortRef.current = null;
       if (err instanceof DOMException && err.name === "AbortError") return;
+      trace("mic_playback_failed");
+      if (sessionId) void flushObservations(sessionId);
       setError("Unable to play the test audio. Please retry the microphone test.");
       setPhase("idle");
     }
-  }, [getSpeechSynthesisApi, language, startListeningAfterPlayback, stopTtsPlayback]);
+  }, [getSpeechSynthesisApi, language, startListeningAfterPlayback, stopTtsPlayback, sessionId, trace]);
 
   useEffect(() => {
     return () => {
@@ -1038,7 +1071,7 @@ function MicCheck({ done, onDone, language, allowSkip = true }: { done: boolean;
           {error && (
             <div className="flex items-center gap-1.5 rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              <span>{error}</span>
+              <span>{error}{sessionId && <span className="block">Support reference: {sessionId}</span>}</span>
               <button type="button" className="ml-auto font-medium underline" onClick={playTTS}>
                 Retry
               </button>
@@ -1493,7 +1526,7 @@ export function IntervieweeOnboarding({
       <StepIndicator current="checklist" />
       <div className="mx-auto w-full max-w-2xl flex-1 space-y-4 px-4 pb-8">
         {needsVisualChecks && <CameraCheck done={cameraDone} onDone={() => setCameraDone(true)} allowSkip={!antiCheatingEnabled} />}
-        {needsMicCheck && <MicCheck done={micDone} onDone={() => setMicDone(true)} language={language} allowSkip={!antiCheatingEnabled && !voiceEnabled} />}
+        {needsMicCheck && <MicCheck sessionId={sessionId} done={micDone} onDone={() => setMicDone(true)} language={language} allowSkip={!antiCheatingEnabled && !voiceEnabled} />}
         {videoAvailable && <RecordingCameraCheck onReady={setRecordWebcam} onChecking={setCheckingCamera} />}
         {needsVisualChecks && <ScreenCheck done={screenDone} onDone={() => setScreenDone(true)} allowSkip={!antiCheatingEnabled} />}
 

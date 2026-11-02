@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { initialQuestionSchema, selectInterviewProject } from "@/lib/personalised-interview-contract";
 import { validIdempotencyKey } from "@/lib/invite-lifecycle";
 import {
   apiError,
@@ -104,7 +104,7 @@ export async function POST(request: Request) {
   if (!body || typeof body !== "object" || Array.isArray(body)) return apiError("BAD_REQUEST", "Expected an object.", 400);
   const key = request.headers.get("Idempotency-Key");
   if (key && (!validIdempotencyKey(key) || process.env.AURAL_INVITE_LIFECYCLE_ENABLED !== "true")) return apiError("BAD_REQUEST", "Idempotent creation is not enabled or key is invalid.", 400);
-  const initialQuestions = z.array(z.object({ text: z.string().trim().min(1).max(2000) }).strict()).max(100).safeParse(body.questions ?? []);
+  const initialQuestions = initialQuestionSchema.safeParse(body.questions ?? []);
   if (!initialQuestions.success || (body.questions !== undefined && !key)) return apiError("BAD_REQUEST", "Initial questions require valid text and an idempotency key.", 400);
   const title = body.title;
   if (typeof title !== "string" || !title.trim()) {
@@ -120,7 +120,8 @@ export async function POST(request: Request) {
     return apiError("BAD_REQUEST", "assessmentCriteria must be an array of { name, description }.", 400);
   }
 
-  const projectId = auth.projectIds[0]!;
+  const projectId = selectInterviewProject(body.projectId, auth.projectIds);
+  if (!projectId) return apiError("BAD_REQUEST", "Specify an accessible projectId; it is required for keys with multiple projects.", 400);
 
   const chatEnabled = typeof body.chatEnabled === "boolean" ? body.chatEnabled : true;
   const voiceEnabled = typeof body.voiceEnabled === "boolean" ? body.voiceEnabled : false;

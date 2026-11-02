@@ -21,7 +21,7 @@
 import { randomUUID } from "crypto";
 import { config } from "dotenv";
 import { WebSocket, WebSocketServer } from "ws";
-import { maxFollowUpsForDepth } from "../src/lib/follow-up-depth";
+import { questionFollowUpLimit } from "../src/lib/follow-up-depth";
 import { bt } from "../src/lib/i18n";
 import { createLogger } from "../src/lib/logger";
 import { callRelayLLM, logRelayLlmStartup } from "./relay-llm";
@@ -284,7 +284,7 @@ interface InterviewContext {
     text: string;
     type: string;
     description?: string | null;
-    options?: { options: string[]; allowMultiple?: boolean } | null;
+    options?: { options?: string[]; allowMultiple?: boolean; maxFollowUps?: number } | null;
     order: number;
   }>;
 }
@@ -661,7 +661,7 @@ function isChineseInterview(ctx: InterviewContext): boolean {
 
 function buildChoiceSuffix(
   type: string,
-  opts: { options: string[]; allowMultiple?: boolean } | null | undefined,
+  opts: { options?: string[]; allowMultiple?: boolean; maxFollowUps?: number } | null | undefined,
   isZh: boolean,
 ): string {
   if (
@@ -683,7 +683,7 @@ function buildGreeting(ctx: InterviewContext): string {
   const firstQ = ctx.questions.sort((a, b) => a.order - b.order)[0];
   const q1Text = firstQ?.text || bt(isZh, SPOKEN.defaultQuestion);
 
-  const opts = firstQ?.options as { options: string[]; allowMultiple?: boolean } | null | undefined;
+  const opts = firstQ?.options as { options?: string[]; allowMultiple?: boolean; maxFollowUps?: number } | null | undefined;
   const isCodingOrWb = firstQ && (firstQ.type === "CODING" || firstQ.type === "WHITEBOARD");
   const spokenQuestion = isCodingOrWb
     ? bt(isZh, SPOKEN.codingWbIntro(firstQ.type))
@@ -694,11 +694,11 @@ function buildGreeting(ctx: InterviewContext): string {
 
 function buildTransitionSayHello(
   questionIndex: number,
-  nextQuestion: { text: string; type: string; options?: { options: string[]; allowMultiple?: boolean } | null },
+  nextQuestion: { text: string; type: string; options?: { options?: string[]; allowMultiple?: boolean; maxFollowUps?: number } | null },
   isZh: boolean
 ): string {
   const isCodingOrWb = nextQuestion.type === "CODING" || nextQuestion.type === "WHITEBOARD";
-  const opts = nextQuestion.options as { options: string[]; allowMultiple?: boolean } | null | undefined;
+  const opts = nextQuestion.options as { options?: string[]; allowMultiple?: boolean; maxFollowUps?: number } | null | undefined;
   const qNum = questionIndex + 1;
 
   if (isCodingOrWb) {
@@ -713,7 +713,7 @@ function buildResumeGreeting(ctx: InterviewContext, questionIndex: number): stri
   const q = sortedQs[questionIndex];
   const qNum = questionIndex + 1;
 
-  const opts = q?.options as { options: string[]; allowMultiple?: boolean } | null | undefined;
+  const opts = q?.options as { options?: string[]; allowMultiple?: boolean; maxFollowUps?: number } | null | undefined;
   const isCodingOrWb = q && (q.type === "CODING" || q.type === "WHITEBOARD");
 
   if (isCodingOrWb) {
@@ -724,7 +724,7 @@ function buildResumeGreeting(ctx: InterviewContext, questionIndex: number): stri
 
 function buildReturnSayHello(
   questionIndex: number,
-  question: { text: string; type: string; options?: { options: string[]; allowMultiple?: boolean } | null },
+  question: { text: string; type: string; options?: { options?: string[]; allowMultiple?: boolean; maxFollowUps?: number } | null },
   isZh: boolean
 ): string {
   const isCodingOrWb = question.type === "CODING" || question.type === "WHITEBOARD";
@@ -734,7 +734,7 @@ function buildReturnSayHello(
     return bt(isZh, SPOKEN.returnTo.codingWb(qNum, bt(isZh, SPOKEN.codingWbIntro(question.type, "continue"))));
   }
 
-  const opts = question.options as { options: string[]; allowMultiple?: boolean } | null | undefined;
+  const opts = question.options as { options?: string[]; allowMultiple?: boolean; maxFollowUps?: number } | null | undefined;
   let optionsSuffix = "";
   const isChoice = question.type === "SINGLE_CHOICE" || question.type === "MULTIPLE_CHOICE";
   if (isChoice && opts?.options?.length) {
@@ -2009,7 +2009,7 @@ async function handleBrowserConnection(browserWs: WebSocket, ctx: InterviewConte
     const agentCtx = await buildAgentContext();
     const latestAnsweredExchange = getLatestAnsweredExchange();
 
-    const qOpts = currentQ.options as { options: string[]; allowMultiple?: boolean } | null | undefined;
+    const qOpts = currentQ.options as { options?: string[]; allowMultiple?: boolean; maxFollowUps?: number } | null | undefined;
     let choiceInstruction = "";
     if (currentQ.type === "SINGLE_CHOICE" && qOpts?.options?.length) {
       const labels = qOpts.options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o}`).join(", ");
@@ -2025,7 +2025,7 @@ async function handleBrowserConnection(browserWs: WebSocket, ctx: InterviewConte
       choiceInstruction = bt(isZh, PROMPTS.choiceInstruction.research(NEXT_TOKEN, PREV_TOKEN));
     }
 
-    const effectiveMaxFollowUps = maxFollowUpsForDepth(ctx.followUpDepth, currentQ.type);
+    const effectiveMaxFollowUps = questionFollowUpLimit(ctx.followUpDepth, currentQ);
     const followUpsDone = countFollowUpsSpent({
       transcript: questionTranscript,
       userTurns: userTurnsOnCurrentQ,
