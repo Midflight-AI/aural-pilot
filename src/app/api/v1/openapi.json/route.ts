@@ -1,3 +1,4 @@
+import { integrationPaths } from "@/lib/api-openapi-integration";
 import { featurePaths, candidateFeatureProperties, questionFeatureProperties } from "@/lib/api-openapi-features";
 /**
  * OpenAPI 3.1 document for the Developer API (`/api/v1`).
@@ -37,6 +38,7 @@ To run an interview: 1. Create interview (\`POST /interviews\`), 2. Add question
   security: [{ bearerAuth: [] }],
   paths: {
     ...featurePaths,
+    ...integrationPaths,
     "/interviews": {
       get: {
         tags: ["Interviews"],
