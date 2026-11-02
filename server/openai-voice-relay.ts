@@ -14,7 +14,7 @@ import { randomUUID } from "crypto";
 import { createServer } from "node:http";
 import { config } from "dotenv";
 import { WebSocket, WebSocketServer } from "ws";
-import { maxFollowUpsForDepth } from "../src/lib/follow-up-depth";
+import { maxFollowUpsForDepth, questionFollowUpLimit } from "../src/lib/follow-up-depth";
 import { createLogger } from "../src/lib/logger";
 import {
   DEFAULT_TTS_BARGE_IN_MIN_AUDIO_BYTES,
@@ -217,7 +217,7 @@ interface InterviewContext {
     text: string;
     type: string;
     description?: string | null;
-    options?: { options: string[]; allowMultiple?: boolean } | null;
+    options?: { options?: string[]; allowMultiple?: boolean; maxFollowUps?: number } | null;
     starterCode?: { language: string; code: string } | null;
     order: number;
   }>;
@@ -258,14 +258,14 @@ function buildSystemPrompt(ctx: InterviewContext, startIdx: number): string {
   const isZh = isChineseInterview(ctx);
   const sorted = ctx.questions.sort((a, b) => a.order - b.order);
 
-  const maxFollowUps = maxFollowUpsForDepth(ctx.followUpDepth);
+  const maxFollowUps = sorted.length ? Math.max(...sorted.map(q => questionFollowUpLimit(ctx.followUpDepth, q))) : maxFollowUpsForDepth(ctx.followUpDepth);
   const { summary: depthSummary, rule: depthRule } = followUpDepthPromptCopy(
     maxFollowUps,
     isZh,
   );
 
   const questionList = sorted.map((q, i) => {
-    let entry = `  ${i + 1}. [${q.type}] ${q.text}`;
+    let entry = `  ${i + 1}. [${q.type}] ${q.text} (maximum follow-ups: ${questionFollowUpLimit(ctx.followUpDepth, q)})`;
     if (q.description) entry += `\n     Context: ${q.description}`;
     if (q.options?.options?.length) {
       const labels = q.options.options.map((o, j) => `${String.fromCharCode(65 + j)}) ${o}`).join(", ");
@@ -708,7 +708,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
   const MIN_QUESTION_DWELL_MS = 15_000;
   const MIN_WORDS_BEFORE_TRANSITION = 20;
   let userCommittedWordsThisQuestion = 0;
-  const followUpBudget = maxFollowUpsForDepth(ctx.followUpDepth);
+
   /** Assistant turns the participant actually heard on the current question.
    *  The first one is the question itself, the rest are follow-ups. */
   let assistantTurnsThisQuestion = 0;
@@ -829,6 +829,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
    * participant has heard as many follow-ups as the interview allows.
    */
   function noteAssistantTurnAgainstFollowUpBudget() {
+    const followUpBudget = questionFollowUpLimit(ctx.followUpDepth, sortedQuestions[currentQuestionIndex]);
     assistantTurnsThisQuestion++;
     if (!oaiWs || oaiWs.readyState !== WebSocket.OPEN) return;
     if (
