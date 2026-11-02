@@ -185,6 +185,7 @@ export function useVoice({
     text: string;
     session: number;
     utteranceId?: string;
+    questionIndex: number;
   } | null>(null);
   /** Relay `playbackCommitSessionRef` at the start of the current TTS utterance (first text or audio chunk). */
   const ttsUtteranceStartSessionRef = useRef(0);
@@ -423,7 +424,7 @@ export function useVoice({
     firstQueuedAudioAtRef.current = null;
   }, [clearPlaybackFlushTimer]);
 
-  const commitAssistantTranscript = useCallback((text: string, reason: string) => {
+  const commitAssistantTranscript = useCallback((text: string, reason: string, questionIndex: number) => {
     const trimmed = text.trim();
     if (!shouldCommitTranscript(lastOnAIResponseRef.current, trimmed)) {
       if (trimmed) log.debug(`Skipping duplicate ASSISTANT (${reason})`);
@@ -434,7 +435,7 @@ export function useVoice({
     onAIResponseRef.current?.(trimmed);
     trackedMessagesRef.current.push({
       role: "assistant",
-      questionIndex: assistantQuestionIndexRef.current,
+      questionIndex,
       content: trimmed,
     });
     log.debug(`Tracked ASSISTANT (${reason}): "${trimmed.slice(0, 60)}..."`);
@@ -481,7 +482,7 @@ export function useVoice({
     pendingAssistantPlaybackCommitRef.current = null;
 
     const committed = text
-      ? commitAssistantTranscript(text, "after playback")
+      ? commitAssistantTranscript(text, "after playback", pending.questionIndex)
       : false;
     if (committed) {
       setState((s) => ({
@@ -1104,6 +1105,7 @@ export function useVoice({
               text: fullResponse,
               session: ttsUtteranceStartSessionRef.current,
               utteranceId,
+              questionIndex: assistantQuestionIndexRef.current,
             };
           }
           tryCommitAssistantPlayback();
