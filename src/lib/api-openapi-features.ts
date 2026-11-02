@@ -1,4 +1,7 @@
 export const candidateFeatureProperties = {
+  inviteStatus: { type: "string", enum: ["active", "cancelled", "expired"] },
+  inviteExpiresAt: { type: ["string", "null"], format: "date-time" },
+  inviteVersion: { type: "integer", minimum: 1 },
   gender: { type: ["string", "null"] }, birthday: { type: ["string", "null"], format: "date" },
   education: { type: ["string", "null"] }, school: { type: ["string", "null"] },
   major: { type: ["string", "null"] }, graduationYear: { type: ["integer", "null"] },
@@ -49,6 +52,12 @@ function bulk(operationId: string, summary: string, description: string) {
   } };
 }
 export const featurePaths = {
+  "/interviews/{id}/candidates/{candidateId}/invitation": { post: {
+    tags: ["Candidates"], summary: "Cancel, expire or reissue an unused invitation (capability gated)",
+    parameters: [id, {name:"candidateId",in:"path",required:true,schema:{type:"string"}}, {name:"Idempotency-Key",in:"header",required:true,schema:{type:"string",minLength:8,maxLength:128}}],
+    requestBody: {required:true,content:{"application/json":{schema:{type:"object",required:["action","version"],properties:{action:{type:"string",enum:["cancel","expire","reissue"]},version:{type:"integer",minimum:1},expiresAt:{type:"string",format:"date-time",description:"Required future expiry for reissue."}}}}}},
+    responses: {...responses(object), "409":{description:"Payload/key conflict, stale invite version, or interview already started."}},
+  } },
   "/interviews/{id}/sessions/end": bulk("endInterviewSessions", "Preview or end interview sessions", "ids are session IDs. Only IN_PROGRESS sessions in this interview are eligible. Marks sessions completed using the same duration logic as the app. Does not generate a report. MEMBER role or higher required. Revalidates each record on execution; already completed sessions are skipped."),
   "/sessions/{id}/report": { get: {
     tags: ["Sessions"], operationId: "getSessionReport", summary: "Read report and media", parameters: [id],

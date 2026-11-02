@@ -1,3 +1,4 @@
+import { invitationUnavailable } from "@/lib/invite-lifecycle";
 import { nanoid } from "@/lib/id";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -99,6 +100,9 @@ export const candidateRouter = router({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
       }
 
+      if (invitationUnavailable(candidate)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "This invitation has expired or been cancelled. Ask for a new link." });
+      }
       return candidate;
     }),
 
@@ -462,6 +466,9 @@ export const candidateRouter = router({
         });
       }
 
+      if (invitationUnavailable(candidate)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "This invitation has expired or been cancelled. Ask for a new link." });
+      }
       return candidate;
     }),
 });
