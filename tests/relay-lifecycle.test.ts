@@ -13,7 +13,7 @@ async function until(predicate: () => boolean, ms = 5000) {
   while (!predicate() && Date.now() < end) await delay(25);
   assert.ok(predicate(), "condition reached before deadline");
 }
-test("relay releases upstream connections on setup disconnect and isolates six simultaneous sessions", { timeout: 35000 }, async () => {
+test("relay releases upstream connections on setup disconnect and isolates twenty simultaneous sessions", { timeout: 35000 }, async () => {
   const provider = new WebSocketServer({ port: 0 });
   await once(provider, "listening");
   const providerPort = (provider.address() as { port: number }).port;
@@ -57,9 +57,9 @@ test("relay releases upstream connections on setup disconnect and isolates six s
     abandoned.close(); await until(() => active === 0, 2000);
     holdSetup = false;
     let audio = 0;
-    await Promise.all(Array.from({ length: 6 }, async () => { const ws = await connect(); ws.on("message", (_data, binary) => { if (binary) audio++; }); }));
-    await until(() => audio >= 6, 8000);
-    assert.equal(peak, 6);
+    await Promise.all(Array.from({ length: 20 }, async () => { const ws = await connect(); ws.on("message", (_data, binary) => { if (binary) audio++; }); }));
+    await until(() => audio >= 20, 8000);
+    assert.equal(peak, 20);
     for (const ws of clients) ws.close();
     await until(() => active === 0, 2000);
     const liveness = await fetch(`http://127.0.0.1:${port}/healthz`);
@@ -72,10 +72,16 @@ test("relay releases upstream connections on setup disconnect and isolates six s
     await until(() => warned, 18000);
     silent.close(); await until(() => active === 0, 2000);
     respond = true;
-    const recovered = await connect(); let recoveredAudio = false;
-    recovered.on("message", (_raw, binary) => { if (binary) recoveredAudio = true; });
-    await until(() => recoveredAudio, 4000);
-    recovered.close(); await until(() => active === 0, 2000);
+    let recoveredAudio = 0;
+    const recovered = await Promise.all(Array.from({ length: 20 }, async () => {
+      const ws = await connect();
+      ws.on("message", (_raw, binary) => { if (binary) recoveredAudio++; });
+      return ws;
+    }));
+    await until(() => recoveredAudio >= 20, 8000);
+    assert.equal(active, 20);
+    for (const ws of recovered) ws.close();
+    await until(() => active === 0, 2000);
   } catch(error) { console.error(logs); throw error; } finally {
     for (const ws of clients) ws.terminate();
     relay.kill("SIGTERM"); await once(relay, "exit");
