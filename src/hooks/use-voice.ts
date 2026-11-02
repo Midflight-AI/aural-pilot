@@ -1,5 +1,6 @@
 "use client";
 
+import { observe } from "@/lib/observability/client";
 import { createLogger } from "@/lib/logger";
 import { cleanPeriodArtifacts, mergeAsrFinal, mergeClientAsrInterim, trimCrossTurnOverlap } from "@/lib/voice/asr-interim";
 import { createMicFrameChunker, encodeMicAudioChunk } from "@/lib/voice/mic-audio";
@@ -59,6 +60,7 @@ interface UseVoiceOptions {
   onError?: (error: string) => void;
   onQuestionChange?: (index: number, total: number) => void;
   onTtsChunk?: (pcmData: ArrayBuffer) => void;
+  onMicStream?: (stream: MediaStream | null) => void;
   onInterrupt?: () => void;
   onWhiteboardSnapshotRequest?: () => string | null | Promise<string | null>;
 }
@@ -108,6 +110,7 @@ export function useVoice({
   onError,
   onQuestionChange,
   onTtsChunk,
+  onMicStream,
   onInterrupt,
   onWhiteboardSnapshotRequest,
 }: UseVoiceOptions) {
@@ -132,9 +135,14 @@ export function useVoice({
   const relayConnectorRef = useRef<RelayConnector<Record<string, unknown>> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const onMicStreamRef = useRef(onMicStream);
+  useEffect(() => { onMicStreamRef.current = onMicStream; }, [onMicStream]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const processorRef = useRef<any>(null);
   const playTimeRef = useRef(0);
+  const observationSessionRef = useRef(sessionId);
+  observationSessionRef.current = sessionId;
+  const responseObservationRef = useRef<number | null>(null);
   const audioSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const queuedAudioChunksRef = useRef<Float32Array[]>([]);
   const queuedAudioSamplesRef = useRef(0);
@@ -283,6 +291,7 @@ export function useVoice({
       const trimmed = finalText.trim();
       if (!trimmed) return;
 
+      responseObservationRef.current = lastMicActivityAtRef.current || performance.now();
       responseWatchdogRef.current = setTimeout(() => {
         responseWatchdogRef.current = null;
         const current = stateRef.current;
@@ -301,6 +310,7 @@ export function useVoice({
           return;
         }
 
+        observe(observationSessionRef.current,"voice_timeout");
         log.warn(
           `No relay response after final user transcript; retrying once: "${trimmed.slice(0, 80)}..."`,
         );
@@ -348,6 +358,7 @@ export function useVoice({
           return;
         }
 
+        observe(observationSessionRef.current,"voice_asr_timeout");
         log.warn(
           `ASR interim did not finalize; promoting once: "${pending.slice(0, 80)}..."`,
         );
@@ -370,6 +381,7 @@ export function useVoice({
   );
 
   const cleanup = useCallback(() => {
+    responseObservationRef.current = null;
     clearResponseWatchdog();
     clearAsrInterimWatchdog();
     clearAsrProcessingTimer();
@@ -543,6 +555,11 @@ export function useVoice({
     // Schedule playback sequentially
     const startAt = Math.max(now, playTimeRef.current);
     source.start(startAt);
+    if (responseObservationRef.current !== null && ctx.state === "running") {
+      // Estimated audible start: local speech activity -> scheduled output + device buffer.
+      observe(observationSessionRef.current,"voice_response",Math.max(0,performance.now()-responseObservationRef.current+(startAt-now+ctx.baseLatency)*1000));
+      responseObservationRef.current=null;
+    }
     playTimeRef.current = startAt + audioBuffer.duration;
     micHoldUntilRef.current =
       performance.now() + Math.max(0, (playTimeRef.current - now) * 1000) + 250;
@@ -626,7 +643,8 @@ export function useVoice({
   const connect = useCallback(async () => {
     try {
       // Request microphone permission
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      permissionStream.getTracks().forEach(track => track.stop());
 
       // Create AudioContext for playback
       if (!audioContextRef.current) {
@@ -661,6 +679,7 @@ export function useVoice({
         reconnectDelayMs: 1500,
         buildInitMessage: () => ({
           type: "init",
+          sessionId,
           context: {
             ...interviewContext,
             startQuestionIndex: currentQuestionIndexRef.current,
@@ -685,6 +704,7 @@ export function useVoice({
           }
         },
         onReconnecting: (attempt, maxAttempts, target) => {
+          observe(sessionId,"voice_reconnect");
           log.info(
             `Reconnecting to ${relayDisplayName(target.kind)} (attempt ${attempt}/${maxAttempts})...`
           );
@@ -697,6 +717,7 @@ export function useVoice({
           );
         },
         onPermanentFailure: (error) => {
+          observe(sessionId,"voice_connect_failed");
           log.error("Voice relay exhausted all targets:", error.message);
           setState((s) => ({ ...s, isConnected: false }));
           onError?.(
@@ -706,11 +727,16 @@ export function useVoice({
       });
 
       relayConnectorRef.current = connector;
+      const connectStarted = performance.now();
       await connector.connect();
+      observe(sessionId,"voice_connect",performance.now()-connectStarted);
+      return true;
     } catch (error) {
+      observe(sessionId,"voice_connect_failed");
       const msg =
         error instanceof Error ? error.message : "Voice connection failed";
       onError?.(msg);
+      return false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onError, playAudio, interviewContext]);
@@ -1241,6 +1267,7 @@ export function useVoice({
         },
       });
       mediaStreamRef.current = stream;
+      onMicStreamRef.current?.(stream);
 
       const ctx = new AudioContext({ sampleRate: 16000 });
       const source = ctx.createMediaStreamSource(stream);
@@ -1303,6 +1330,7 @@ export function useVoice({
   /** Stop capturing microphone */
   const stopListening = useCallback(() => {
     isListeningRef.current = false;
+    onMicStreamRef.current?.(null);
 
     if (processorRef.current) {
       const { processor, source, ctx } = processorRef.current;

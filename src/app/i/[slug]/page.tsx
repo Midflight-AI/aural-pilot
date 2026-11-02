@@ -1,4 +1,5 @@
 "use client";
+import { InterviewHeader } from "@/components/brand/ramp";
 
 import { PreparingScreen } from "@/components/session/preparing-screen";
 import { SessionEndedScreen } from "@/components/session/session-ended-screen";
@@ -105,7 +106,7 @@ export default function PublicInterviewPage() {
 
   if (interview.isError || !interview.data) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+      <div className="flex min-h-screen flex-col bg-background"><InterviewHeader /><div className="flex flex-1 items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardContent className="py-12 text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
@@ -118,7 +119,7 @@ export default function PublicInterviewPage() {
             </p>
           </CardContent>
         </Card>
-      </div>
+      </div></div>
     );
   }
 
@@ -132,7 +133,7 @@ export default function PublicInterviewPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+    <div className="flex min-h-screen flex-col bg-background"><InterviewHeader /><div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -265,6 +266,6 @@ export default function PublicInterviewPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </div></div>
   );
 }

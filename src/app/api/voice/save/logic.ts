@@ -1,3 +1,5 @@
+import { recordedSessionDuration } from "@/lib/recording-duration";
+
 export type VoiceSavePayload = {
   sessionId?: string;
   messages?: Array<{
@@ -69,6 +71,8 @@ export type CompletionSession = {
   startedAt: string;
   lastActivityAt?: string | null;
   activitySegments: unknown;
+  audioDuration?: unknown;
+  audioRecordings?: unknown;
   interview: {
     title: string;
     objective: string | null;
@@ -146,7 +150,10 @@ export async function handleVoiceSave(
         const cappedNow = new Date(cappedNowMs).toISOString();
         const segments = await ops.closeOpenSegments(sessionId, cappedNow);
         let duration: number;
-        if (segments.length > 0) {
+        const recordedDuration = recordedSessionDuration(session);
+        if (recordedDuration !== null) {
+          duration = recordedDuration;
+        } else if (segments.length > 0) {
           duration = computeSegmentDuration(segments, cappedNowMs);
         } else {
           const timestamps = await ops.loadMessageTimestamps(sessionId);

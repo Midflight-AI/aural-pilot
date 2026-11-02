@@ -1,4 +1,5 @@
 "use client";
+import { InterviewHeader } from "@/components/brand/ramp";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -65,7 +66,7 @@ export default function InvitePage() {
   // Error / invalid token
   if (candidate.isError || !candidate.data) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+      <div className="flex min-h-screen flex-col bg-background"><InterviewHeader /><div className="flex flex-1 items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardContent className="py-12 text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
@@ -77,7 +78,7 @@ export default function InvitePage() {
             </p>
           </CardContent>
         </Card>
-      </div>
+      </div></div>
     );
   }
 

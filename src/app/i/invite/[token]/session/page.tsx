@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { AntiCheatingGuard } from "@/components/session/anti-cheating-banner";
+import { VideoRecovery } from "@/components/session/video-recovery";
 import { IntervieweeOnboarding } from "@/components/session/interviewee-onboarding";
 import { PreparingScreen } from "@/components/session/preparing-screen";
 import {
@@ -35,6 +36,7 @@ export default function InviteSessionPage() {
   const [completionReason, setCompletionReason] = useState<
     SessionEndReason | undefined
   >();
+  const [recordWebcam, setRecordWebcam] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(false);
 
   const handleComplete = (reason?: SessionEndReasonInput) => {
@@ -71,12 +73,14 @@ export default function InviteSessionPage() {
   }
 
   if (completed || session.status === "COMPLETED") {
-    return <SessionEndedScreen reason={completionReason} />;
+    return <><VideoRecovery sessionId={session.id} /><SessionEndedScreen reason={completionReason} /></>;
   }
 
   if (!onboardingDone) {
     return (
+      <><VideoRecovery sessionId={session.id} />
       <IntervieweeOnboarding
+        sessionId={session.id}
         interviewTitle={interview.title}
         interviewDescription={interview.description}
         questionCount={interview.questions?.length ?? 0}
@@ -88,8 +92,8 @@ export default function InviteSessionPage() {
         chatEnabled={!!interview.chatEnabled}
         aiName={interview.aiName}
         questionTypes={(interview.questions ?? []).map((q: any) => q.type as string)}
-        onComplete={() => setOnboardingDone(true)}
-      />
+        onComplete={consent => { setRecordWebcam(consent); setOnboardingDone(true); }}
+      /></>
     );
   }
 
@@ -137,6 +141,7 @@ export default function InviteSessionPage() {
           initialDrawings={resume.drawings.length ? resume.drawings : undefined}
           chatEnabled={!!interview.chatEnabled}
           onComplete={handleComplete}
+          recordWebcam={recordWebcam}
           videoMode={!!interview.videoEnabled}
         />
       </>
