@@ -1817,6 +1817,8 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
               const calls = [...pendingFunctionCalls];
               pendingFunctionCalls = [];
               for (const fc of calls) {
+                // Introduction responses are out-of-band; their tool calls are not in the default conversation.
+                if (isIntroduction) continue;
                 ws.send(JSON.stringify({
                   type: "conversation.item.create",
                   item: {
