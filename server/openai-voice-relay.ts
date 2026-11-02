@@ -966,9 +966,18 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       oaiWs.send(JSON.stringify({type:"session.update",session:{type:"realtime",instructions: pendingInterviewComplete ? "The interview is complete. Say one brief farewell and ask no questions." : buildSystemPrompt(ctx,currentQuestionIndex) + "\n" + introductionEvidence(introductionAnswers)}}));
       log.info(`Introduction response state session=${sessionId} question=${currentQuestionIndex + 1} assistantTurns=${assistantTurnsThisQuestion}`);
     }
-    const payload = response
-      ? { type: "response.create", response }
-      : { type: "response.create" };
+    const introductionResponse = isIntroduction ? {
+      // Out-of-band responses exclude stale interviewer questions and tool chatter.
+      // The authoritative question and candidate evidence are supplied afresh.
+      conversation: "none",
+      input: [{type:"message",role:"user",content:[{type:"input_text",text:
+        pendingInterviewComplete ? "Give one short farewell."
+        : assistantTurnsThisQuestion === 0
+          ? `Ask this current question verbatim, without a new introduction: ${sortedQuestions[currentQuestionIndex]?.text}`
+          : `Respond to the latest participant answer in the evidence. Current question index=${currentQuestionIndex}. Follow-ups remaining=${Math.max(0,questionFollowUpLimit(ctx.followUpDepth,sortedQuestions[currentQuestionIndex]) - (assistantTurnsThisQuestion - 1))}. Ask only a useful missing detail about THIS question, or call signal_question_change with questionIndex=${currentQuestionIndex + 1}. Never speak a transition or another topic before that tool is accepted.`
+      }]}],
+    } : {};
+    const payload = {type:"response.create",response:{...introductionResponse,...response}};
     responseInFlight = true;
     observations.emit("voice_response_requested", lastVadSpeechEnd ? Math.min(3_600_000, Math.max(0, Date.now() - lastVadSpeechEnd)) : undefined);
     modelResponseRequestedAt = performance.now();

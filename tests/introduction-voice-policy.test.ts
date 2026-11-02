@@ -107,3 +107,11 @@ test('skip and budget transitions reset counters and complete the last question'
  assert.equal(result.interviewDone,true);
  assert.match(result.prompts[1],/farewell only/);
 });
+
+
+test('introduction responses exclude stale interviewer turns and request the authoritative question',()=>{
+ const code=callback('requestAssistantResponse');
+ assert.match(code,/conversation: "none"/);
+ assert.match(code,/Ask this current question verbatim/);
+ assert.match(code,/Never speak a transition or another topic before that tool is accepted/);
+});
