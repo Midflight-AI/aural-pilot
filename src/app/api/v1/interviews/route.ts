@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { validIdempotencyKey } from "@/lib/invite-lifecycle";
 import {
   apiError,
   isAuthError,
@@ -99,6 +101,11 @@ export async function POST(request: Request) {
     return apiError("BAD_REQUEST", "Invalid JSON body.", 400);
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body)) return apiError("BAD_REQUEST", "Expected an object.", 400);
+  const key = request.headers.get("Idempotency-Key");
+  if (key && (!validIdempotencyKey(key) || process.env.AURAL_INVITE_LIFECYCLE_ENABLED !== "true")) return apiError("BAD_REQUEST", "Idempotent creation is not enabled or key is invalid.", 400);
+  const initialQuestions = z.array(z.object({ text: z.string().trim().min(1).max(2000) }).strict()).max(100).safeParse(body.questions ?? []);
+  if (!initialQuestions.success || (body.questions !== undefined && !key)) return apiError("BAD_REQUEST", "Initial questions require valid text and an idempotency key.", 400);
   const title = body.title;
   if (typeof title !== "string" || !title.trim()) {
     return apiError("BAD_REQUEST", "title is required.", 400);
@@ -152,6 +159,13 @@ export async function POST(request: Request) {
     publicSlug: nanoid(10),
   };
 
+  if (key) {
+    const { publicSlug: _slug, userId: _user, projectId: _project, ...input } = insert;
+    void _slug; void _user; void _project;
+    const { data, error } = await supabaseAdmin.rpc("create_api_interview", { p_actor: auth.userId, p_project: projectId, p_key: key, p_input: { ...input, questions: initialQuestions.data } });
+    if (error) return apiError(error.message.includes("IDEMPOTENCY_CONFLICT") ? "IDEMPOTENCY_CONFLICT" : "INTERNAL_ERROR", "Interview creation failed.", error.message.includes("IDEMPOTENCY_CONFLICT") ? 409 : 500);
+    return Response.json({ data });
+  }
   const { data: interview, error } = await supabaseAdmin
     .from("interviews")
     .insert(insert)
