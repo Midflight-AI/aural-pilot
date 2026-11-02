@@ -15,7 +15,7 @@ test('introduction accepts short answers but never transitions before an answer 
 });
 test('introduction policy replaces generic interviewer pressure and preserves questions and corrections',()=>{
  const p=introductionPrompt({name:'Amped',title:'Introduction',language:'English',questionList:'1. Payroll responsibility (maximum follow-ups: 0)',currentQuestion:1,questionCount:6});
- assert.match(p,/zero means ask the next question/);
+ assert.match(p,/zero means ask the next question after an answer or explicit skip/);
  assert.match(p,/can be complete answers/);
  assert.match(p,/Accept corrections/);
  assert.match(p,/Do not replace these with a rotating list of filler/);
@@ -63,4 +63,13 @@ test('all response requests and explicit flushes are blocked while speech is act
 });
 test('normal finished speech still commits and requests an answer',()=>{
  const h=harness();h.schedule();h.advance();assert.equal(h.stats().requests,1);assert.equal(h.stats().commits,1);
+});
+
+test('introduction explores useful detail without treating thinking phrases as answers or pushing refusals',()=>{
+ const p=introductionPrompt({name:'Amped',title:'Introduction',language:'English',questionList:'1. Responsibilities (maximum follow-ups: 1)\n2. CV example (maximum follow-ups: 2)',currentQuestion:1,questionCount:2});
+ assert.match(p,/not answers or requests to skip/);
+ assert.match(p,/ceilings, not targets/);
+ assert.match(p,/Never ask for more detail after an explicit refusal/);
+ assert.match(p,/Do not return to a completed question/);
+ assert.doesNotMatch(p,/Usually go directly to the next question/);
 });
