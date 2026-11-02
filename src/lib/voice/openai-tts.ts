@@ -4,10 +4,11 @@ export async function synthesizeOpenAiSpeech(
   format: "wav" | "mp3" | "pcm",
   signal: AbortSignal,
   request: typeof fetch = fetch,
+  config?: {base:string;key:string;model:string},
 ): Promise<Uint8Array> {
-  const base = process.env.OPENAI_BASE_URL;
-  const key = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_TTS_DEPLOYMENT;
+  const base = config?.base ?? process.env.OPENAI_BASE_URL;
+  const key = config?.key ?? process.env.OPENAI_API_KEY;
+  const model = config?.model ?? process.env.OPENAI_TTS_DEPLOYMENT;
   if (!base || !key || !model) throw new Error("Speech provider is not configured");
   if (!text.trim() || text.length > 4096) throw new Error("Invalid speech text length");
   const url = new URL("audio/speech", `${base.replace(/\/$/, "")}/`);

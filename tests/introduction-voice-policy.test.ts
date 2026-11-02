@@ -112,9 +112,9 @@ test('skip and budget transitions reset counters and complete the last question'
 
 test('introduction responses exclude stale interviewer turns and request the authoritative question',()=>{
  const code=callback('requestAssistantResponse');
- assert.match(code,/conversation:\s*"none"/);
- assert.match(code,/text-to-speech reader/);
- assert.match(code,/tools:\[\],tool_choice:"none"/);
+ assert.match(code,/synthesizeOpenAiSpeech\(speech/);
+ assert.match(code,/controller.signal.aborted/);
+ assert.doesNotMatch(code,/conversation:\s*"none"/);
 });
 
 
