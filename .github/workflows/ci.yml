@@ -84,3 +84,7 @@ jobs:
         run: psql -h 127.0.0.1 -U postgres -d postgres -f tests/video-spike.sql
         env:
           PGPASSWORD: disposable-video-ci
+      - name: Provider migration replay and invitation webhook contracts
+        run: psql -h 127.0.0.1 -U postgres -d postgres -f tests/sql/provider-release.sql
+        env:
+          PGPASSWORD: disposable-video-ci
