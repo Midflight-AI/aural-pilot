@@ -1,4 +1,6 @@
 "use client";
+import { Camera } from "lucide-react";
+import { InterviewHeader } from "@/components/brand/ramp";
 
 import { CodeBlock } from "@/components/code-editor/code-block";
 import {
@@ -41,6 +43,7 @@ import {
     useChunkLoadRecovery,
     useSessionToolChunkPrefetch,
 } from "@/hooks/use-chunk-load-recovery";
+import { useVideoSpike } from "@/hooks/use-video-spike";
 import { useInterviewRecording } from "@/hooks/use-interview-recording";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { useVoice, type InterviewContext } from "@/hooks/use-voice";
@@ -391,8 +394,12 @@ interface VoiceInterfaceProps {
   chatEnabled?: boolean;
   onComplete?: (reason?: SessionEndReasonInput) => void;
   videoMode?: boolean;
+  recordWebcam?: boolean;
   /** Render in static preview mode — shows full layout without connecting */
   preview?: boolean;
+  /** Show camera placement without requesting a device in the design preview. */
+  previewWebcam?: boolean;
+  previewVoiceState?: "listening" | "speaking" | "thinking";
 }
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -412,10 +419,32 @@ export function VoiceInterface({
   chatEnabled = false,
   onComplete,
   videoMode = false,
+  recordWebcam = false,
   preview = false,
+  previewWebcam = false,
+  previewVoiceState = "listening",
 }: VoiceInterfaceProps) {
   useChunkLoadRecovery();
   useSessionToolChunkPrefetch(!preview);
+
+  // Only preview mode supplies synthetic levels. The same rendered indicators
+  // below read the real microphone level during a live interview.
+  const [previewAudioLevel, setPreviewAudioLevel] = useState(0.35);
+  useEffect(() => {
+    if (!preview || previewVoiceState === "thinking") return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const sync = () => {
+      if (timer) clearInterval(timer);
+      if (!reducedMotion.matches) timer = setInterval(() => {
+        const elapsed = performance.now() / 350;
+        setPreviewAudioLevel(0.2 + (Math.sin(elapsed) + 1) * 0.3);
+      }, 100);
+    };
+    sync();
+    reducedMotion.addEventListener("change", sync);
+    return () => { if (timer) clearInterval(timer); reducedMotion.removeEventListener("change", sync); };
+  }, [preview, previewVoiceState]);
 
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -651,11 +680,14 @@ export function VoiceInterface({
     window.addEventListener("pointerup", onUp);
   }, []);
 
+  const videoSpike = useVideoSpike(sessionId, () => { recording.cancelTts(); void voice.disconnect(); handleEndInterviewRef.current(); }, recordWebcam);
+  const [videoRecoveryNeeded, setVideoRecoveryNeeded] = useState(false);
+
   // ── Audio recording with optional visual capture ──────────────────────────────────
   const recording = useInterviewRecording({
     sessionId,
     enabled: true,
-    captureVisuals: videoMode,
+    captureVisuals: videoMode && !videoSpike.consent,
   });
 
   const cameraPipRef = useRef<HTMLVideoElement>(null);
@@ -711,7 +743,7 @@ export function VoiceInterface({
 
   const handleError = useCallback((err: string) => {
     setError(err);
-    setTimeout(() => setError(""), 5000);
+
   }, []);
 
   const exportWhiteboardPngForRelay = useCallback(async () => {
@@ -732,6 +764,7 @@ export function VoiceInterface({
     onAIResponse: handleAIResponse,
     onError: handleError,
     onTtsChunk: recording.addTtsChunk,
+    onMicStream: recording.attachMicStream,
     onInterrupt: recording.cancelTts,
     onWhiteboardSnapshotRequest: exportWhiteboardPngForRelay,
   });
@@ -761,14 +794,22 @@ export function VoiceInterface({
     recording.start(micStream ?? undefined);
   }, [voice.isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Attach mic stream to recording when it becomes available
   useEffect(() => {
-    if (!voice.isListening) return;
-    const micStream = voice.mediaStreamRef.current;
-    if (micStream) {
-      recording.attachMicStream(micStream);
+    if (videoRecoveryNeeded && videoSpike.state === "processing") {
+      setVideoRecoveryNeeded(false);
+      if (locallyCompleted) onComplete?.(localCompletionReason);
     }
-  }, [voice.isListening]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [videoRecoveryNeeded, videoSpike.state, locallyCompleted, localCompletionReason, onComplete]);
+
+  // A terminal relay failure must not leave capture running on a disconnected screen.
+  const wasConnectedRef = useRef(false);
+  useEffect(() => {
+    if (voice.isConnected) wasConnectedRef.current = true;
+    else if (wasConnectedRef.current && !locallyCompleted) {
+      wasConnectedRef.current = false;
+      handleEndInterviewRef.current();
+    }
+  }, [voice.isConnected, locallyCompleted]);
 
   // ── Countdown timer (starts when voice connects) ────────────────
   useEffect(() => {
@@ -1267,6 +1308,11 @@ export function VoiceInterface({
     setIsSaving(true);
 
     voice.stopListening();
+    recording.pauseCapture();
+    let videoSaved = true;
+    // Stop capture now; drain video alongside audio/metadata rather than adding
+    // post-interview upload time to either media or the completion wait.
+    const videoFinishing = videoSpike.finish().catch(() => { videoSaved = false; });
 
     try {
       await Promise.allSettled([
@@ -1320,9 +1366,11 @@ export function VoiceInterface({
     } catch (err) {
       console.error("[voice] Failed to end interview cleanly:", err);
     } finally {
-      onComplete?.(normalizedReason);
+      await videoFinishing;
+      if (videoSaved) onComplete?.(normalizedReason);
+      else { setVideoRecoveryNeeded(true); setIsSaving(false); }
     }
-  }, [saveAllDrawings, saveAllCodeSnippets, recording, sessionId, voice, onComplete]);
+  }, [saveAllDrawings, saveAllCodeSnippets, recording, sessionId, voice, onComplete, videoSpike]);
 
   useEffect(() => {
     handleEndInterviewRef.current = handleEndInterview;
@@ -1340,7 +1388,7 @@ export function VoiceInterface({
   useEffect(() => {
     if (!voice.timeLimitExceeded || locallyCompleted || timeLimitTriggeredRef.current) return;
     timeLimitTriggeredRef.current = true;
-    onComplete?.("ACCOUNT_SESSION_TIME_LIMIT_REACHED");
+    handleEndInterviewRef.current("ACCOUNT_SESSION_TIME_LIMIT_REACHED");
   }, [voice.timeLimitExceeded, locallyCompleted, onComplete]);
 
   // ── Scroll transcript to bottom ─────────────────────────────────
@@ -1448,15 +1496,16 @@ export function VoiceInterface({
   const isCodingQuestion = currentQVoice?.type === "CODING";
   const isWhiteboardQuestion = currentQVoice?.type === "WHITEBOARD";
   const showVoiceTransitioning = voice.isTransitioning;
-  const showVoiceProcessing = !showVoiceTransitioning && voice.isProcessing;
-  const showVoiceSpeaking =
+  const showVoiceProcessing = preview ? previewVoiceState === "thinking" : !showVoiceTransitioning && voice.isProcessing;
+  const showVoiceSpeaking = preview ? previewVoiceState === "speaking" :
     !showVoiceTransitioning && !showVoiceProcessing && voice.isSpeaking;
-  const showVoiceListening =
+  const showVoiceListening = preview ? previewVoiceState === "listening" :
     voice.isConnected &&
     !showVoiceTransitioning &&
     !showVoiceProcessing &&
     !showVoiceSpeaking &&
     voice.isListening;
+  const displayAudioLevel = preview ? previewAudioLevel : voice.audioLevel;
   const showTranscribingWithoutMic =
     voice.isTranscribing && !showVoiceTransitioning && !showVoiceSpeaking &&
     !showVoiceProcessing && !showVoiceListening;
@@ -1639,6 +1688,14 @@ export function VoiceInterface({
   }, [voice.isConnected, isCodingQuestion, isWhiteboardQuestion]);
 
   // ── Render ──────────────────────────────────────────────────────
+  if (locallyCompleted && videoSpike.active()) {
+    return <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6" role="status">
+      <h1 className="text-xl font-semibold">Interview finished</h1>
+      <p>{videoRecoveryNeeded ? "Video upload paused. Retrying automatically. Keep this tab and browser data open." : "Finishing the remaining video upload. Keep this tab open."}</p>
+      {videoRecoveryNeeded && <Button onClick={async () => { try { await videoSpike.retry(); setVideoRecoveryNeeded(false); onComplete?.(localCompletionReason); } catch (error) { setError(error instanceof Error ? error.message : "Recovery failed."); } }}>Retry video upload</Button>}
+      {error && <p role="alert">{error}</p>}
+    </div>;
+  }
   return shouldShowCompletionScreen ? completionScreen : (
     <div className="relative flex h-screen flex-col overflow-hidden bg-background">
       {/* Saving overlay */}
@@ -1652,13 +1709,14 @@ export function VoiceInterface({
         </div>
       )}
 
+      <InterviewHeader candidateOnly />
       {/* Header */}
       <div className="shrink-0 border-b bg-card px-3 py-2 md:px-6 md:py-3">
         <div className="flex items-center justify-between">
           <div className="mr-2 min-w-0 flex-1">
             <h1 className="truncate text-sm font-semibold md:text-base">{interviewTitle}</h1>
             <p className="hidden text-xs text-muted-foreground md:block">
-              Voice Interview with {aiName}
+              Interview with {aiName}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1724,7 +1782,7 @@ export function VoiceInterface({
                       <Mic className="absolute inset-0 h-full w-full text-secondary-500 motion-safe:animate-pulse" />
                       <div
                         className="absolute inset-0 overflow-hidden transition-[clip-path] duration-150 ease-out"
-                        style={{ clipPath: `inset(${(1 - voice.audioLevel) * 100}% 0 0 0)` }}
+                        style={{ clipPath: `inset(${(1 - displayAudioLevel) * 100}% 0 0 0)` }}
                       >
                         <Mic className="h-full w-full text-secondary-400" />
                       </div>
@@ -2066,7 +2124,7 @@ export function VoiceInterface({
                 )}
                 {showVoiceSpeaking && (
                   <div className="flex items-center gap-2 text-primary">
-                    <Volume2 className="h-5 w-5 animate-pulse" />
+                    <Volume2 className="h-5 w-5 motion-safe:animate-pulse" />
                     <span className="text-sm font-medium">{aiName} is speaking...</span>
                   </div>
                 )}
@@ -2079,7 +2137,7 @@ export function VoiceInterface({
                         <Mic className="absolute inset-0 h-full w-full text-muted-foreground/30" />
                         <div
                           className="absolute inset-0 overflow-hidden transition-[clip-path] duration-150 ease-out"
-                          style={{ clipPath: `inset(${(1 - voice.audioLevel) * 100}% 0 0 0)` }}
+                          style={{ clipPath: `inset(${(1 - displayAudioLevel) * 100}% 0 0 0)` }}
                         >
                           <Mic className="h-full w-full text-secondary-400" />
                         </div>
@@ -2100,9 +2158,9 @@ export function VoiceInterface({
 
                 {/* Audio waveform — driven by real audio level */}
                 {(showVoiceSpeaking || showVoiceListening) && (
-                  <div className="flex items-center gap-1">
+                  <div data-testid="voice-waveform" aria-hidden="true" className="flex items-center gap-1">
                     {Array.from({ length: 20 }).map((_, i) => {
-                      const level = showVoiceSpeaking ? 0.5 : voice.audioLevel;
+                      const level = showVoiceSpeaking ? 0.5 : displayAudioLevel;
                       const barVariance = Math.sin((i + Date.now() / 200) * 0.7) * 0.3 + 0.7;
                       return (
                         <div
@@ -2129,16 +2187,38 @@ export function VoiceInterface({
                 )}
               </div>
 
-              {!voice.isConnected && !preview && (
+              {videoSpike.enabled && (videoRecoveryNeeded || (videoSpike.recovery.some(manifest => manifest.chunks.length > 0 || manifest.sealed) && !videoSpike.prepared() && !videoSpike.active() && !isStartingInterview)) && (
+                <div role="status" className="space-y-2">
+                  <p>Video needs recovery in this browser. Audio, transcript and report are kept separately.</p>
+                  <Button onClick={async () => { try { await videoSpike.retry(); setVideoRecoveryNeeded(false); if (locallyCompleted) onComplete?.(localCompletionReason); } catch (error) { setError(error instanceof Error ? error.message : "Recovery failed."); } }}>Retry video upload</Button>
+                </div>
+              )}
+              {videoSpike.active() && <p role="status">{videoSpike.state === "capturing" ? "Webcam recording" : videoSpike.state === "attention" ? "Video upload interrupted — keep this tab open" : videoSpike.state === "processing" ? "Video uploaded; playback is being checked" : "Saving video…"}</p>}
+              {!voice.isConnected && !preview && !locallyCompleted && (
                 <Button
                   size="lg"
-                  disabled={isStartingInterview}
+                  disabled={isStartingInterview || (recordWebcam && !videoSpike.enabled)}
                   onClick={async () => {
                     setError("");
                     setIsStartingInterview(true);
                     try {
-                      await voice.connect();
-                    } catch {
+                      const withVideo = videoSpike.enabled && videoSpike.consent;
+                      if (withVideo) {
+                        await videoSpike.prepare();
+                        // The button owns recording startup after the relay is ready.
+                        recordingStartedRef.current = true;
+                      }
+                      if (!await voice.connect()) throw new Error("The interview could not connect. Your camera is off. Please try again.");
+                      if (withVideo) {
+                        await recording.start(voice.mediaStreamRef.current ?? undefined);
+                        const mixed = recording.getMixedStream();
+                        if (!mixed) throw new Error("Audio recorder unavailable.");
+                        await videoSpike.start(mixed);
+                      }
+                    } catch (error) {
+                      videoSpike.releasePreparedCamera();
+                      recordingStartedRef.current = false;
+                      setError(error instanceof Error ? error.message : "Unable to start recording.");
                       setIsStartingInterview(false);
                     }
                   }}
@@ -2149,7 +2229,7 @@ export function VoiceInterface({
                   ) : (
                     <Mic className="h-5 w-5" />
                   )}
-                  {isStartingInterview ? "Connecting..." : "Start Voice Interview"}
+                  {isStartingInterview ? "Connecting..." : "Start Interview"}
                 </Button>
               )}
 
@@ -2161,7 +2241,7 @@ export function VoiceInterface({
 
               {preview && (
                 <p className="text-sm text-muted-foreground">
-                  This is where the voice conversation happens
+                  Animation preview · simulated audio input; microphone is off.
                 </p>
               )}
               {voice.isConnected && !voice.isListening && !showVoiceProcessing && !showVoiceSpeaking && !showVoiceTransitioning && !voice.isTranscribing && (
@@ -2635,6 +2715,11 @@ export function VoiceInterface({
       )}
 
       {/* ── Camera PIP overlay (video mode) — draggable ────── */}
+      {(videoSpike.camera || (preview && previewWebcam)) && (
+        <div data-testid="webcam-tile" className="absolute bottom-24 right-3 z-20 w-28 overflow-hidden rounded-lg border bg-card shadow-md sm:right-4 sm:w-40">
+          {videoSpike.camera ? <video muted playsInline autoPlay aria-label="Your webcam preview" className="aspect-video w-full object-cover" ref={element => { if (element && element.srcObject !== videoSpike.camera) element.srcObject = videoSpike.camera; }} /> : <div className="flex aspect-video flex-col items-center justify-center gap-1 bg-muted p-2 text-center text-xs text-muted-foreground"><Camera className="h-5 w-5" /><span>Sample webcam position</span></div>}
+        </div>
+      )}
       {videoMode && recording.cameraStream && (
         <DraggablePip>
           <video

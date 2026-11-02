@@ -6,3 +6,6 @@ test-results
 playwright-report
 *.pem
 *.key
+.vercel
+.azure
+supabase/.temp

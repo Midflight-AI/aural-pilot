@@ -1,5 +1,6 @@
 "use client";
 
+import { InterviewHeader } from "@/components/brand/ramp";
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertTriangle, CheckCircle2, Clock3 } from "lucide-react";
 
@@ -71,7 +72,7 @@ export function SessionEndedScreen({
   const Icon = copy.icon;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+    <div className="flex min-h-screen flex-col bg-background"><InterviewHeader candidateOnly /><div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardContent className="py-12 text-center">
           <Icon className={`mx-auto h-16 w-16 ${copy.iconClassName}`} />
@@ -79,6 +80,6 @@ export function SessionEndedScreen({
           <p className="mt-2 text-muted-foreground">{copy.description}</p>
         </CardContent>
       </Card>
-    </div>
+    </div></div>
   );
 }

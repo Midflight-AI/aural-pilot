@@ -1,3 +1,4 @@
+import { videoRequestHeaders } from "../video/client";
 export type RelayKind = "voice" | "openai";
 export type RelayPrimaryPreference = "auto" | RelayKind;
 
@@ -455,9 +456,22 @@ export class RelayConnector<TJsonMessage extends Record<string, unknown>> {
 
       const clear = () => clearTimeout(timer);
 
-      socket.onopen = () => {
+      socket.onopen = async () => {
         if (this.destroyed || attemptId !== this.attemptSerial) return;
-        socket.send(JSON.stringify(this.buildInitMessage()));
+        try {
+          const init = this.buildInitMessage();
+          if (process.env.NEXT_PUBLIC_VOICE_RELAY_AUTH_ENABLED === "true") {
+            const response = await fetch("/api/voice/ticket", { method: "POST", headers: { "Content-Type": "application/json", ...videoRequestHeaders() }, body: JSON.stringify(init), signal: AbortSignal.timeout(8000) });
+            if (!response.ok) throw new Error("Voice access could not be verified");
+            const { ticket } = await response.json();
+            if (this.destroyed || attemptId !== this.attemptSerial) return;
+            socket.send(JSON.stringify({ ...(init as object), ticket }));
+          } else socket.send(JSON.stringify(init));
+        } catch {
+          clear();
+          socket.close();
+          if (!settled) { settled = true; reject(new Error("Voice access could not be verified")); }
+        }
       };
 
       socket.onmessage = (event) => {
