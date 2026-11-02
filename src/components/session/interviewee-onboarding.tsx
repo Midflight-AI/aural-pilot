@@ -376,7 +376,7 @@ function CameraCheck({
           {error && (
             <div className="flex items-center gap-1.5 rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              <span>{error}{sessionId && <span className="block">Support reference: {sessionId}</span>}</span>
+              <span>{error}</span>
               <button type="button" className="ml-auto font-medium underline" onClick={startCamera}>
                 Retry
               </button>
@@ -1071,7 +1071,7 @@ function MicCheck({ done, onDone, language, sessionId, allowSkip = true }: { don
           {error && (
             <div className="flex items-center gap-1.5 rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              <span>{error}</span>
+              <span>{error}{sessionId && <span className="block">Support reference: {sessionId}</span>}</span>
               <button type="button" className="ml-auto font-medium underline" onClick={playTTS}>
                 Retry
               </button>
