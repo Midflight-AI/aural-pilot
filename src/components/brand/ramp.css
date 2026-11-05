@@ -1,5 +1,5 @@
-/* Candidate/auth-only Ramp theme. Root scoping includes portalled dialogs and
-   toasts; leaving the route removes the marker and restores the admin theme. */
+/* Shared Ramp tokens include portalled dialogs and toasts. Candidate/auth
+   surfaces stay light; the back office retains the user's theme preference. */
 :root:has([data-ramp-surface]) {
   --font-heading: var(--font-body);
   --background: 40 42.86% 94.51%;
@@ -44,3 +44,31 @@
 }
 
 :root:has([data-ramp-surface]) .text-amber-600 { color: #805b10; }
+
+:root.dark:has([data-ramp-surface]):not(:has([data-ramp-theme="light"])) {
+  --background: 224 25% 10%;
+  --foreground: 40 43% 95%;
+  --card: 224 25% 15%;
+  --popover: 224 25% 15%;
+  --primary: 228 100% 78%;
+  --primary-foreground: 224 25% 10%;
+  --secondary: 224 24% 22%;
+  --secondary-foreground: var(--foreground);
+  --muted: 224 24% 20%;
+  --muted-foreground: 223 23% 75%;
+  --accent: 225 35% 26%;
+  --accent-foreground: var(--foreground);
+  --border: 224 20% 30%;
+  --input: 224 20% 48%;
+  --destructive: 5 90% 76%;
+  --destructive-foreground: 224 25% 10%;
+  color-scheme: dark;
+}
+.ramp-logo-dark { display: none; }
+.dark:not(:has([data-ramp-theme="light"])) .ramp-logo-light { display: none; }
+.dark:not(:has([data-ramp-theme="light"])) .ramp-logo-dark { display: inline; }
+.ramp-sidebar .ramp-wordmark { width: 166px; }
+.ramp-sidebar a:focus-visible, .ramp-sidebar button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.dashboard-shell input, .dashboard-shell textarea { caret-color: hsl(var(--primary)); }
+.dashboard-shell table { font-variant-numeric: tabular-nums; }
+.dashboard-shell .code-scrollbar { scrollbar-color: hsl(var(--border)) transparent; }

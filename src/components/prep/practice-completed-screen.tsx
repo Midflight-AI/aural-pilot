@@ -1,7 +1,7 @@
 "use client";
 
 import { PracticeSessionReport } from "@/components/prep/practice-session-report";
-import { AuralLogo } from "@/components/ui/aural-logo";
+import { RampAdaptiveWordmark } from "@/components/brand/ramp";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CheckCircle2, RotateCcw } from "lucide-react";
@@ -23,8 +23,7 @@ export function PracticeCompletedScreen({
     <div className="flex min-h-screen flex-col bg-muted/30">
       <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b bg-card px-6">
         <div className="flex items-center gap-1">
-          <AuralLogo size={28} className="shrink-0" />
-          <span className="font-heading text-base font-bold tracking-[2px]">AURAL</span>
+          <RampAdaptiveWordmark />
         </div>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline" size="sm">

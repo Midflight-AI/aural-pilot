@@ -12,9 +12,9 @@ export const practicesArticles: DocArticle[] = [
     title: "Practices Overview",
     titleZh: "练习概览",
     description:
-      "Learn how Aural Practices turns an existing interview into a repeatable coaching workspace with voice practice, AI feedback, suggested answers, and score tracking.",
+      "Learn how Ramp Remote Practices turns an existing interview into a repeatable coaching workspace with voice practice, AI feedback, suggested answers, and score tracking.",
     descriptionZh:
-      "了解 Aural 练习如何把已有面试变成可重复的 AI 教练空间",
+      "了解 Ramp Remote 练习如何把已有面试变成可重复的 AI 教练空间",
     audience: "creators",
     order: 1,
     content: () => (
@@ -80,7 +80,7 @@ export const practicesArticles: DocArticle[] = [
 
         <h2>What Gets Saved</h2>
         <p>
-          Aural saves practice sessions and answer attempts so you can measure
+          Ramp Remote saves practice sessions and answer attempts so you can measure
           progress over time. Saved data includes the interview, practice mode,
           status, start and completion timestamps, total duration, submitted
           answers, per-answer feedback, attempt count, average score, and best
@@ -95,7 +95,7 @@ export const practicesArticles: DocArticle[] = [
     title: "Setting Up Practice Context",
     titleZh: "设置练习上下文",
     description:
-      "Add role, company, job description, and resume context so Aural can tailor practice feedback and suggested answers to the interview goal.",
+      "Add role, company, job description, and resume context so Ramp Remote can tailor practice feedback and suggested answers to the interview goal.",
     descriptionZh: "添加职位、公司、JD 和简历信息，让 AI 教练反馈更贴合目标",
     audience: "creators",
     order: 2,
@@ -104,7 +104,7 @@ export const practicesArticles: DocArticle[] = [
         <h2>Why Context Matters</h2>
         <p>
           Practice context gives the AI coach the background it needs to judge
-          whether an answer proves the right signals. Without context, Aural can
+          whether an answer proves the right signals. Without context, Ramp Remote can
           still score clarity and structure. With context, it can also tell you
           where to use resume evidence, which role expectations are missing, and
           how to make an answer sound more specific to the opportunity.
@@ -177,7 +177,7 @@ export const practicesArticles: DocArticle[] = [
         <h2>Start Practice</h2>
         <p>
           Open an interview&apos;s <strong>Practices</strong> tab and click{" "}
-          <strong>Practice interview</strong>. Aural opens focused practice mode
+          <strong>Practice interview</strong>. Ramp Remote opens focused practice mode
           at <code>/practice/[interviewId]</code> and starts a new practice
           session for the signed-in user.
         </p>
@@ -202,7 +202,7 @@ export const practicesArticles: DocArticle[] = [
           </DocStep>
           <DocStep step={3} title="Submit for feedback">
             <p>
-              Aural grades the answer, streams coaching feedback, saves the
+              Ramp Remote grades the answer, streams coaching feedback, saves the
               attempt, and updates your best score for the current question.
             </p>
           </DocStep>

@@ -5,16 +5,16 @@ export const faqArticles: DocArticle[] = [
     slug: "general",
     categorySlug: "faq",
     title: "General FAQ",
-    description: "Common questions about Aural",
+    description: "Common questions about Ramp Remote",
     audience: "both",
     order: 1,
     content: () => (
       <>
         <h2>General Questions</h2>
 
-        <h3>Can I use Aural for free?</h3>
+        <h3>What powers Ramp Remote Interviews?</h3>
         <p>
-          Yes. Aural is open-source and all features are available without any usage limits. You only need to provide your own AI provider API keys (e.g. OpenAI, Kimi, MiniMax).
+          Ramp Remote Interviews is built on the open-source Aural platform. Your organisation manages access and AI provider configuration.
         </p>
 
         <h3>What languages are supported?</h3>
@@ -29,7 +29,7 @@ export const faqArticles: DocArticle[] = [
 
         <h3>What browsers and devices are supported?</h3>
         <p>
-          Chrome on desktop is recommended for full voice, video, and interactive tool support. Safari and Firefox generally work but may have limitations. Mobile browsers can run Aural, though a desktop is recommended for critical interviews.
+          Chrome on desktop is recommended for full voice, video, and interactive tool support. Safari and Firefox generally work but may have limitations. Mobile browsers can run Ramp Remote, though a desktop is recommended for critical interviews.
         </p>
 
         <h3>Is my data secure?</h3>
@@ -39,7 +39,7 @@ export const faqArticles: DocArticle[] = [
 
         <h3>What happens if I lose connection during an interview?</h3>
         <p>
-          Aural saves your progress automatically. Return to the same interview link to resume where you left off. The interviewer can also view any data captured before the disconnection.
+          Ramp Remote saves your progress automatically. Return to the same interview link to resume where you left off. The interviewer can also view any data captured before the disconnection.
         </p>
 
         <h3>How long is my data retained?</h3>
