@@ -26,3 +26,7 @@ values('1a698808-3525-4887-91af-19f82b77a01b','22222222-2222-4222-8222-222222222
 \ir webhook-outbox.sql
 \ir webhook-controls.sql
 \ir invite-lifecycle.sql
+\ir ../../supabase/migrations/004_interview_prep.sql
+\ir ../../supabase/migrations/005_account_delete_and_answer_bank.sql
+\ir ../../supabase/migrations/006_internal_pilot_access.sql
+\ir database-advisor-hardening.sql
