@@ -15,15 +15,12 @@ export default function DocsHomePage() {
     <>
       <DocsHeader />
 
-      <div className="bg-mk-dark py-16 px-8 lg:px-[120px]">
+      <div className="bg-[#334be8] text-white py-16 px-8 lg:px-[120px]">
         <div className="max-w-[1440px] mx-auto text-center space-y-6">
-          <span className="block font-heading text-[11px] font-semibold tracking-[2px] text-mk-terracotta">
-            DOCUMENTATION
-          </span>
-          <h1 className="font-heading text-3xl md:text-5xl font-bold text-mk-text-light leading-tight">
+          <h1 className="font-heading text-3xl md:text-5xl font-bold text-white leading-tight">
             How can we help?
           </h1>
-          <p className="text-lg text-mk-text-muted max-w-2xl mx-auto">
+          <p className="text-lg text-white/90 max-w-2xl mx-auto">
             Guides and answers for interview creators and interviewees.
           </p>
           <div className="pt-2">

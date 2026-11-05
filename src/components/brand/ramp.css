@@ -72,3 +72,7 @@
 .dashboard-shell input, .dashboard-shell textarea { caret-color: hsl(var(--primary)); }
 .dashboard-shell table { font-variant-numeric: tabular-nums; }
 .dashboard-shell .code-scrollbar { scrollbar-color: hsl(var(--border)) transparent; }
+
+:root.dark:has([data-ramp-surface]):not(:has([data-ramp-theme="light"])) .text-secondary-500,
+:root.dark:has([data-ramp-surface]):not(:has([data-ramp-theme="light"])) .text-secondary-600 { color: #8ed6b1; }
+:root.dark:has([data-ramp-surface]):not(:has([data-ramp-theme="light"])) .text-amber-600 { color: #f3ce75; }
