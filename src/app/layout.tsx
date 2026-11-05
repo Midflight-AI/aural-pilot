@@ -1,3 +1,4 @@
+import { RampSurface } from "@/components/brand/ramp";
 import { Providers } from "@/components/providers";
 import { Toaster } from "@/components/ui/toaster";
 import type { Metadata, Viewport } from "next";
@@ -22,16 +23,16 @@ const spaceGrotesk = Space_Grotesk({
   variable: "--font-heading",
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://aural-ai.com";
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://interviews.rampremote.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Aural - AI Interview Platform | Voice & Video Interviews",
-    template: "%s | Aural",
+    default: "Ramp Remote - AI Interview Platform | Voice & Video Interviews",
+    template: "%s | Ramp Remote",
   },
   description:
-    "Aural is the AI interview platform for structured voice, chat, and video interviews. Automate candidate screening, get real-time insights, and scale your interview process.",
+    "Ramp Remote is the AI interview platform for structured voice, chat, and video interviews. Automate candidate screening, get real-time insights, and scale your interview process.",
   keywords: [
     "AI interview platform",
     "voice interview",
@@ -52,26 +53,26 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "en_US",
-    siteName: "Aural",
-    title: "Aural - AI Interview Platform | Voice & Video Interviews",
+    siteName: "Ramp Remote",
+    title: "Ramp Remote - AI Interview Platform | Voice & Video Interviews",
     description:
-      "Aural is the AI interview platform for structured voice, chat, and video interviews. Automate candidate screening, get real-time insights, and scale your interview process.",
+      "Ramp Remote is the AI interview platform for structured voice, chat, and video interviews. Automate candidate screening, get real-time insights, and scale your interview process.",
     url: siteUrl,
     images: [
       {
-        url: `${siteUrl}/images/marketing/hero-screenshots.webp`,
-        width: 1920,
-        height: 960,
-        alt: "Aural AI Interview Platform",
+        url: `${siteUrl}/brand/ramp-remote/wordmark-primary.svg`,
+        width: 1465,
+        height: 291,
+        alt: "Ramp Remote AI Interview Platform",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Aural - AI Interview Platform | Voice & Video Interviews",
+    title: "Ramp Remote - AI Interview Platform | Voice & Video Interviews",
     description:
-      "Aural is the AI interview platform for structured voice, chat, and video interviews. Automate candidate screening, get real-time insights, and scale your interview process.",
-    images: [`${siteUrl}/images/marketing/hero-screenshots.webp`],
+      "Ramp Remote is the AI interview platform for structured voice, chat, and video interviews. Automate candidate screening, get real-time insights, and scale your interview process.",
+    images: [`${siteUrl}/brand/ramp-remote/wordmark-primary.svg`],
   },
 };
 
@@ -84,8 +85,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className={`${inter.variable} ${spaceGrotesk.variable}`}>
       <body className={inter.className}>
         <Providers>
-          {children}
-          <Toaster />
+          <RampSurface adaptive>{children}<Toaster /></RampSurface>
         </Providers>
       </body>
     </html>

@@ -14,7 +14,7 @@ export const teamsOrganizationsArticles: DocArticle[] = [
       <>
         <h2>Organizations</h2>
         <p>
-          An organization is the top-level account that owns all interviews, questions, and sessions. When you sign up, Aural creates a <strong>Personal</strong> organization for you automatically.
+          An organization is the top-level account that owns all interviews, questions, and sessions. When you sign up, Ramp Remote creates a <strong>Personal</strong> organization for you automatically.
         </p>
         <p>
           You can create additional organizations (e.g., one per company) and switch between them from the sidebar breadcrumb.
@@ -37,7 +37,7 @@ export const teamsOrganizationsArticles: DocArticle[] = [
         </p>
         <DocImage src="/images/docs/org-members.webp" alt="Organization Members page with member table and Add Member button" />
         <p>
-          Click <strong>+ Add member</strong>, enter the person&apos;s email address, and choose a role. If they don&apos;t have an Aural account yet, they&apos;ll receive an invitation.
+          Click <strong>+ Add member</strong>, enter the person&apos;s email address, and choose a role. If they don&apos;t have an Ramp Remote account yet, they&apos;ll receive an invitation.
         </p>
 
         <h3>Roles</h3>

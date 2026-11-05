@@ -69,7 +69,7 @@ export function DocsSearch({ compact }: DocsSearchProps) {
           onBlur={() => setTimeout(() => setFocused(false), 200)}
           placeholder="Search..."
           className={cn(
-            "w-full bg-white border border-mk-border text-sm text-mk-text placeholder:text-mk-text-muted focus:outline-none focus:border-mk-terracotta/50 focus:ring-2 focus:ring-mk-terracotta/10 transition-all",
+            "w-full bg-card border border-mk-border text-sm text-mk-text placeholder:text-mk-text-muted focus:outline-none focus:border-mk-terracotta/50 focus:ring-2 focus:ring-mk-terracotta/10 transition-all",
             compact
               ? "pl-10 pr-16 py-2 rounded-lg"
               : "pl-12 pr-10 py-3.5 rounded-xl"
@@ -90,7 +90,7 @@ export function DocsSearch({ compact }: DocsSearchProps) {
       </div>
 
       {showResults && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-mk-border rounded-xl shadow-lg overflow-hidden z-50 max-h-96 overflow-y-auto code-scrollbar">
+        <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-mk-border rounded-xl shadow-lg overflow-hidden z-50 max-h-96 overflow-y-auto code-scrollbar">
           {results.length === 0 ? (
             <div className="px-5 py-8 text-center text-sm text-mk-text-muted">
               No articles found for &quot;{query}&quot;
