@@ -30,7 +30,7 @@ export async function generateMetadata({
   if (!article) return {};
   const category = getCategory(catSlug);
   return {
-    title: `${article.title} | ${category?.title} | Ramp Remote Docs`,
+    title: `${article.title} | ${category?.title} | Help centre`,
     description: article.description,
   };
 }

@@ -5,7 +5,7 @@ import { categories, getCategoryArticles } from "@/content/docs";
 import Link from "next/link";
 
 export const metadata = {
-  title: "Docs | Ramp Remote",
+  title: "Help centre",
   description:
     "Learn how to use Ramp Remote — guides for interview creators and interviewees.",
 };
