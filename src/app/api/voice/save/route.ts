@@ -7,6 +7,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import {
   handleVoiceSave,
+  resolveVoiceQuestionId,
   type ActivitySegment,
   type CompletionSession,
   type ProgressSession,
@@ -17,17 +18,22 @@ import {
 const log = createLogger("api/voice/save");
 const voiceSaveOps: VoiceSaveOps = {
   async insertMessages(sessionId, messages) {
-    await supabaseAdmin.from("messages").insert(
+    const {data:session,error:sessionError} = await supabaseAdmin.from("sessions").select("interviewId").eq("id",sessionId).single();
+    if (sessionError || !session) throw sessionError ?? new Error("Session not found");
+    const {data:questions,error:questionError} = await supabaseAdmin.from("questions").select("id").eq("interviewId",session.interviewId).order("order");
+    if (questionError) throw questionError;
+    const {error:insertError} = await supabaseAdmin.from("messages").insert(
       messages.map((m) => ({
         sessionId,
         role: m.role === "user" ? ("USER" as const) : ("ASSISTANT" as const),
         content: m.content,
         contentType: "TEXT" as const,
-        questionId: m.questionId || null,
+        questionId: resolveVoiceQuestionId(m,questions ?? []),
         wordCount: m.content.split(/\s+/).length,
         transcription: m.source === "chat" ? "chat" : null,
       })),
     );
+    if (insertError) throw insertError;
   },
   async loadSessionForCompletion(sessionId) {
     const { data } = await supabaseAdmin

@@ -15,7 +15,7 @@ test('introduction accepts short answers but never transitions before an answer 
 });
 test('introduction policy replaces generic interviewer pressure and preserves questions and corrections',()=>{
  const p=introductionPrompt({name:'Amped',title:'Introduction',language:'English',questionList:'1. Payroll responsibility (maximum follow-ups: 0)',currentQuestion:1,questionCount:6});
- assert.match(p,/zero means ask the next question/);
+ assert.match(p,/zero means ask the next question after an answer or explicit skip/);
  assert.match(p,/can be complete answers/);
  assert.match(p,/Accept corrections/);
  assert.match(p,/Do not replace these with a rotating list of filler/);
@@ -33,6 +33,7 @@ function callback(name:string){
 }
 function harness(){
  const body=`
+ let introductionPlanEpoch=0,introductionPlanAbort=null;
  let vadSpeechActive=false,pendingInputFlush=null,pendingSpeechFinalize=null,queuedAssistantResponse=null,
  speechStopForwardGraceUntil=0,lastTranscriptUpdateAt=0,speechTranscriptCommitted=false;
  const USER_INPUT_FLUSH_MS=3000;
@@ -63,4 +64,63 @@ test('all response requests and explicit flushes are blocked while speech is act
 });
 test('normal finished speech still commits and requests an answer',()=>{
  const h=harness();h.schedule();h.advance();assert.equal(h.stats().requests,1);assert.equal(h.stats().commits,1);
+});
+
+test('introduction explores useful detail without treating thinking phrases as answers or pushing refusals',()=>{
+ const p=introductionPrompt({name:'Amped',title:'Introduction',language:'English',questionList:'1. Responsibilities (maximum follow-ups: 1)\n2. CV example (maximum follow-ups: 2)',currentQuestion:1,questionCount:2});
+ assert.match(p,/not answers or requests to skip/);
+ assert.match(p,/ceilings, not targets/);
+ assert.match(p,/Never ask for more detail after an explicit refusal/);
+ assert.match(p,/Do not return to a completed question/);
+ assert.doesNotMatch(p,/Usually go directly to the next question/);
+});
+
+test('hard follow-up ceiling advances after the answer, while thinking and refusals remain distinct',async()=>{
+ const {introductionTurnAction}=await import('../server/introduction-voice-policy');
+ assert.equal(introductionTurnAction('A supportive team',1,1),'respond');
+ assert.equal(introductionTurnAction('Growth and more responsibility',2,1),'advance');
+ assert.equal(introductionTurnAction('I checked three months of records and raised the concern',2,2),'respond');
+ assert.equal(introductionTurnAction('My tip-off started the investigation',3,2),'advance');
+ assert.equal(introductionTurnAction("That's a good one.",3,2),'wait');
+ assert.equal(introductionTurnAction("I can't remember.",1,2),'advance');
+});
+
+test('participant contribution remains available after advancing to another question',async()=>{
+ const {introductionEvidence}=await import('../server/introduction-voice-policy');
+ const evidence=introductionEvidence([{question:3,text:'I reviewed three months of timesheets and initiated the investigation.'}]);
+ assert.match(evidence,/initiated the investigation/);
+ assert.match(evidence,/Ask only for genuinely missing information/);
+});
+
+test('skip and budget transitions reset counters and complete the last question',()=>{
+ const body=callback('requestTransition');
+ const code=`let introductionPlanEpoch=0,introductionPlanAbort=null,plannedIntroductionSpeech=null; let isTransitioning=false,queuedAssistantResponse=null,currentQuestionIndex=0,userCommittedWordsThisQuestion=6,assistantTurnsThisQuestion=3,followUpLimitNoticeSent=true,questionEnteredAt=0,interviewDone=false,pendingInterviewComplete=false,interviewCompleteTimer=null;
+ const sortedQuestions=[{text:'Team'},{text:'Contribution'}],log={info(){}},events=[],prompts=[],timers=[];
+ const clearPendingTransition=()=>{},clearQuestionPrompt=()=>{},cancelOngoingResponse=()=>{},disableTools=()=>{},pushHistory=()=>{},markInterviewComplete=()=>{};
+ const send=x=>events.push(x),sendQuestionPrompt=x=>prompts.push(x),setTimeout=(f)=>{timers.push(f);return 1};
+ ${body}
+ requestTransition(1,'Next Question','budget');timers.shift()();
+ const moved={currentQuestionIndex,assistantTurnsThisQuestion,followUpLimitNoticeSent};
+ requestTransition(2,'Next Question','budget');timers.shift()();
+ return {moved,interviewDone,prompts};`;
+ const result=new Function(ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)();
+ assert.deepEqual(result.moved,{currentQuestionIndex:1,assistantTurnsThisQuestion:0,followUpLimitNoticeSent:false});
+ assert.equal(result.interviewDone,true);
+ assert.match(result.prompts[1],/farewell only/);
+});
+
+
+test('introduction responses exclude stale interviewer turns and request the authoritative question',()=>{
+ const code=callback('requestAssistantResponse');
+ assert.match(code,/synthesizeOpenAiSpeech\(speech/);
+ assert.match(code,/controller.signal.aborted/);
+ assert.doesNotMatch(code,/conversation:\s*"none"/);
+});
+
+
+test('structured planner rejects missing information and malformed decisions',async()=>{
+ const {validateIntroductionPlan}=await import('../server/introduction-planner');
+ assert.throws(()=>validateIntroductionPlan({action:'follow_up',question:'What did you contribute?',recognition:'',missingDetail:''}));
+ assert.throws(()=>validateIntroductionPlan({action:'unknown',question:'',recognition:'',missingDetail:''}));
+ assert.deepEqual(validateIntroductionPlan({action:'advance',question:'',recognition:'You initiated the investigation.',missingDetail:''}),{action:'advance',question:'',recognition:'You initiated the investigation.',missingDetail:''});
 });
