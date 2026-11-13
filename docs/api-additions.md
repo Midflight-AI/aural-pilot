@@ -29,3 +29,15 @@ Preview first by posting this body to `/interviews/{id}/sessions/end`:
 ## Self-hosted upgrade
 
 No new environment variables, dependencies, or migrations are required by these additions. Existing installations should already have applied the repository's migrations, including `003_audio_recordings.sql`. Kimi-only installations now select K2.6 for reports; OpenAI and Gemini keep their existing precedence. Kimi K2.6 non-streaming requests disable thinking and omit custom temperature.
+
+### Webhook delivery views
+
+`GET /api/v1/webhook-deliveries` keeps its existing cursor contract. For a
+full-result table, pass `view` as JSON and do not pass `cursor`. The JSON
+contains `q`, `sort` (`col` and `dir`), `filters`, `group` and `page`. Use
+`limit` for the page size, from 1 to 100. The response contains `data`,
+`total`, `groupCounts`, `page` and `pageSize`. Search and filters use the
+operator-facing event, status and result labels. Sort and filter happen before
+page selection; event IDs break ties. Unknown fields or operations fail with
+400. The server derives the project scope from the API key. Retry requests keep
+their existing subscription and idempotency rules.
