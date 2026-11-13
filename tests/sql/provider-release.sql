@@ -17,6 +17,7 @@ create function storage.foldername(text) returns text[] language sql immutable a
 \ir ../../supabase/migrations/20261031092022_invite_lifecycle.sql
 \ir ../../supabase/migrations/20261101042905_webhook_delivery_controls.sql
 \ir ../../supabase/migrations/20261102015331_personalised_interview_contract.sql
+\ir ../../supabase/migrations/20261113184630_webhook_delivery_view.sql
 
 insert into auth.users(id,email) values('11111111-1111-4111-8111-111111111111','provider-ci@example.invalid');
 insert into public.interviews(id,title,"userId","projectId")
@@ -25,6 +26,7 @@ insert into public.sessions(id,"interviewId","participantName")
 values('1a698808-3525-4887-91af-19f82b77a01b','22222222-2222-4222-8222-222222222222','Synthetic CI');
 \ir webhook-outbox.sql
 \ir webhook-controls.sql
+\ir webhook-delivery-view.sql
 \ir invite-lifecycle.sql
 \ir ../../supabase/migrations/004_interview_prep.sql
 \ir ../../supabase/migrations/005_account_delete_and_answer_bank.sql

@@ -21,3 +21,18 @@ test('bounded retries, dead letters and independent delivery signatures',()=>{
  assert.equal(first['Aural-Event-Id'],retry['Aural-Event-Id']);
  assert.notEqual(first['Aural-Signature'],retry['Aural-Signature']);
 });
+
+import {deliveryQuery,parseDeliveryView} from '../src/lib/webhooks/api';
+test('delivery views reject invalid fields and retain the cursor contract',()=>{
+ const id='11111111-1111-4111-8111-111111111111';
+ assert.equal(deliveryQuery.parse({subscription_id:id,cursor:'old',limit:'20'}).cursor,'old');
+ assert.equal(deliveryQuery.safeParse({subscription_id:id,cursor:'old',view:'{}'}).success,false);
+ const view=parseDeliveryView(JSON.stringify({page:2,q:'accepted',sort:{col:'attempts',dir:'desc'},filters:[{col:'status',kind:'anyOf',values:['Failed']}],group:'status'}));
+ assert.equal(view.page,2);assert.equal(view.filters[0].col,'status');
+ assert.equal(parseDeliveryView(JSON.stringify({sort:{col:'httpStatus',dir:'asc'},filters:[{col:'eventId',kind:'equals',q:id}]})).sort?.col,'httpStatus');
+ for(const value of [
+  {sort:{col:'payload',dir:'asc'}},{filters:[{col:'event',kind:'range',min:1}]},
+  {filters:[{col:'status',kind:'anyOf',values:['dead']}]},{q:'x'.repeat(201)},
+  {group:'sessionId'}, {page:0}, {filters:Array(21).fill({col:'event',kind:'isEmpty'})},
+ ]) assert.throws(()=>parseDeliveryView(JSON.stringify(value)));
+});
