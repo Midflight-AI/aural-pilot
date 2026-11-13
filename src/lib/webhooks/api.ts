@@ -10,8 +10,8 @@ export function encodeDeliveryCursor(row:{occurred_at:string;event_id:string}) {
   return Buffer.from(JSON.stringify({at:row.occurred_at,id:row.event_id})).toString('base64url');
 }
 
-const textColumns = ['event', 'lastResult', 'sessionId'] as const;
-const numberColumns = ['revision', 'attempts', 'retryCount'] as const;
+const textColumns = ['event', 'lastResult', 'sessionId', 'eventId'] as const;
+const numberColumns = ['revision', 'attempts', 'retryCount', 'httpStatus'] as const;
 const dateColumns = ['occurredAt', 'deliveredAt', 'nextAttemptAt'] as const;
 const columns = [...textColumns, 'status', ...numberColumns, ...dateColumns] as const;
 const textFilter = z.object({col:z.enum(textColumns),kind:z.enum(['contains','doesNotContain','equals','notEquals']),q:z.string().max(200)}).strict();

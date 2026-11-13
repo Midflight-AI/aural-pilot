@@ -9,12 +9,12 @@ begin
  page:=(p_view->>'page')::integer;
  if page not between 1 and 1000000 then raise exception 'Invalid page' using errcode='22023'; end if;
  sort_col:=coalesce(p_view#>>'{sort,col}','occurredAt'); direction:=coalesce(p_view#>>'{sort,dir}','desc');
- if sort_col not in ('event','status','occurredAt','revision','attempts','retryCount','lastResult','sessionId','deliveredAt','nextAttemptAt') or direction not in ('asc','desc') then raise exception 'Invalid sort' using errcode='22023'; end if;
+ if sort_col not in ('event','status','occurredAt','revision','attempts','retryCount','lastResult','sessionId','eventId','httpStatus','deliveredAt','nextAttemptAt') or direction not in ('asc','desc') then raise exception 'Invalid sort' using errcode='22023'; end if;
  for filter in select value from jsonb_array_elements(p_view->'filters') loop
   col:=filter->>'col'; kind:=filter->>'kind';
-  if col not in ('event','status','occurredAt','revision','attempts','retryCount','lastResult','sessionId','deliveredAt','nextAttemptAt') or kind not in ('contains','doesNotContain','equals','notEquals','range','dateRange','anyOf','noneOf','isEmpty','isNotEmpty') then raise exception 'Invalid filter' using errcode='22023'; end if;
-  if (kind in ('contains','doesNotContain','equals','notEquals') and (col not in ('event','lastResult','sessionId') or jsonb_typeof(filter->'q')<>'string' or length(filter->>'q')>200))
-  or (kind='range' and (col not in ('revision','attempts','retryCount') or (filter ? 'min' and jsonb_typeof(filter->'min')<>'number') or (filter ? 'max' and jsonb_typeof(filter->'max')<>'number')))
+  if col not in ('event','status','occurredAt','revision','attempts','retryCount','lastResult','sessionId','eventId','httpStatus','deliveredAt','nextAttemptAt') or kind not in ('contains','doesNotContain','equals','notEquals','range','dateRange','anyOf','noneOf','isEmpty','isNotEmpty') then raise exception 'Invalid filter' using errcode='22023'; end if;
+  if (kind in ('contains','doesNotContain','equals','notEquals') and (col not in ('event','lastResult','sessionId','eventId') or jsonb_typeof(filter->'q')<>'string' or length(filter->>'q')>200))
+  or (kind='range' and (col not in ('revision','attempts','retryCount','httpStatus') or (filter ? 'min' and jsonb_typeof(filter->'min')<>'number') or (filter ? 'max' and jsonb_typeof(filter->'max')<>'number')))
   or (kind='dateRange' and (col not in ('occurredAt','deliveredAt','nextAttemptAt') or (filter ? 'from' and coalesce(filter->>'from','') !~ '^\d{4}-\d{2}-\d{2}$') or (filter ? 'to' and coalesce(filter->>'to','') !~ '^\d{4}-\d{2}-\d{2}$')))
   or (kind in ('anyOf','noneOf') and (col<>'status' or jsonb_typeof(filter->'values')<>'array' or jsonb_array_length(filter->'values')>3 or exists(select 1 from jsonb_array_elements_text(filter->'values') v where v not in ('Delivered','Queued','Failed')))) then
    raise exception 'Invalid filter' using errcode='22023'; end if;
@@ -38,7 +38,7 @@ begin
     'occurredAt',occurred_at,'revision',session_revision,'attempts',attempts,'retryCount',retry_count,
     'lastResult',case when state='delivered' then 'Accepted' when last_code is null then '—' else
       (case last_code when 'NETWORK_ERROR' then 'Connection failed' when 'HTTP_RETRY' then 'Receiver temporarily unavailable' when 'RETRIES_EXHAUSTED' then 'Automatic retries exhausted' when 'DESTINATION_REJECTED' then 'Receiver rejected delivery' when 'CONFIGURATION' then 'Connection configuration needs attention' else 'Needs attention' end)||case when last_status is null then '' else ' (HTTP '||last_status||')' end end,
-    'sessionId',session_id,'deliveredAt',delivered_at,'nextAttemptAt',next_attempt_at) fields
+    'sessionId',session_id,'eventId',event_id,'httpStatus',last_status,'deliveredAt',delivered_at,'nextAttemptAt',next_attempt_at) fields
   from source
  ), filtered as materialized (
   select m.* from mapped m where
@@ -59,10 +59,10 @@ begin
  ), ordered as materialized (
   select f.*,row_number() over(order by
    case when p_view->>'group'='status' then case f.fields->>'status' when 'Delivered' then 0 when 'Queued' then 1 when 'Failed' then 2 else 3 end end,
-   case when sort_col in ('event','status','lastResult','sessionId') and direction='asc' then lower(f.fields->>sort_col) end asc nulls last,
-   case when sort_col in ('event','status','lastResult','sessionId') and direction='desc' then lower(f.fields->>sort_col) end desc nulls last,
-   case when sort_col in ('revision','attempts','retryCount') and direction='asc' then (f.fields->>sort_col)::numeric end asc nulls last,
-   case when sort_col in ('revision','attempts','retryCount') and direction='desc' then (f.fields->>sort_col)::numeric end desc nulls last,
+   case when sort_col in ('event','status','lastResult','sessionId','eventId') and direction='asc' then lower(f.fields->>sort_col) end asc nulls last,
+   case when sort_col in ('event','status','lastResult','sessionId','eventId') and direction='desc' then lower(f.fields->>sort_col) end desc nulls last,
+   case when sort_col in ('revision','attempts','retryCount','httpStatus') and direction='asc' then (f.fields->>sort_col)::numeric end asc nulls last,
+   case when sort_col in ('revision','attempts','retryCount','httpStatus') and direction='desc' then (f.fields->>sort_col)::numeric end desc nulls last,
    case when sort_col in ('occurredAt','deliveredAt','nextAttemptAt') and direction='asc' then (f.fields->>sort_col)::timestamptz end asc nulls last,
    case when sort_col in ('occurredAt','deliveredAt','nextAttemptAt') and direction='desc' then (f.fields->>sort_col)::timestamptz end desc nulls last,
    f.event_id desc) rn from filtered f

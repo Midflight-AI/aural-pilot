@@ -27,6 +27,8 @@ begin
  if (result->>'total')::int<>1001 then raise exception 'empty or inclusive date range failed'; end if;
  result:=public.query_webhook_deliveries(array[project],sub,v||'{"filters":[{"col":"event","kind":"notEquals","q":"report ready"},{"col":"status","kind":"noneOf","values":["Failed"]}],"group":"status"}',20);
  if (result->>'total')::int<>1000 or (result#>>'{groupCounts,Delivered}')::int<>1000 then raise exception 'not equals, none-of or group counts failed'; end if;
+ result:=public.query_webhook_deliveries(array[project],sub,v||jsonb_build_object('sort',jsonb_build_object('col','httpStatus','dir','desc'),'filters',jsonb_build_array(jsonb_build_object('col','eventId','kind','equals','q',md5('delivery-view-1001')::uuid::text))),20);
+ if (result->>'total')::int<>1 or (result#>>'{data,0,last_status}')::int<>503 then raise exception 'event ID or HTTP status unavailable'; end if;
  result:=public.query_webhook_deliveries(array[project],sub,v||'{"filters":[{"col":"event","kind":"equals","q":"Report ready"},{"col":"status","kind":"anyOf","values":["Failed"]}]}',20);
  if (result->>'total')::int<>1 then raise exception 'display label filters failed'; end if;
  result:=public.query_webhook_deliveries('{}',sub,v,20);

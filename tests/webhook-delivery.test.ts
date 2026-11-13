@@ -29,6 +29,7 @@ test('delivery views reject invalid fields and retain the cursor contract',()=>{
  assert.equal(deliveryQuery.safeParse({subscription_id:id,cursor:'old',view:'{}'}).success,false);
  const view=parseDeliveryView(JSON.stringify({page:2,q:'accepted',sort:{col:'attempts',dir:'desc'},filters:[{col:'status',kind:'anyOf',values:['Failed']}],group:'status'}));
  assert.equal(view.page,2);assert.equal(view.filters[0].col,'status');
+ assert.equal(parseDeliveryView(JSON.stringify({sort:{col:'httpStatus',dir:'asc'},filters:[{col:'eventId',kind:'equals',q:id}]})).sort?.col,'httpStatus');
  for(const value of [
   {sort:{col:'payload',dir:'asc'}},{filters:[{col:'event',kind:'range',min:1}]},
   {filters:[{col:'status',kind:'anyOf',values:['dead']}]},{q:'x'.repeat(201)},
