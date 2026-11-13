@@ -19,16 +19,18 @@ begin
   or (kind in ('anyOf','noneOf') and (col<>'status' or jsonb_typeof(filter->'values')<>'array' or jsonb_array_length(filter->'values')>3 or exists(select 1 from jsonb_array_elements_text(filter->'values') v where v not in ('Delivered','Queued','Failed')))) then
    raise exception 'Invalid filter' using errcode='22023'; end if;
  end loop;
- with retries as materialized (
-  select r.event_id,count(*) retry_count from public.webhook_retry_requests r where r.subscription_id=p_subscription group by r.event_id
+ with authorised_subscription as materialized (
+  select s.id,s.project_id,s.enabled from public.webhook_subscriptions s where s.id=p_subscription and s.project_id=any(p_projects)
+ ), retries as materialized (
+  select r.event_id,count(*) retry_count from public.webhook_retry_requests r join authorised_subscription s on s.id=r.subscription_id group by r.event_id
  ), source as materialized (
   select o.id event_id,d.subscription_id,o.session_id,o.event_type,o.session_revision,o.occurred_at,d.state,d.attempts,
    case when d.last_code in ('NETWORK_ERROR','HTTP_RETRY','RETRIES_EXHAUSTED','DESTINATION_REJECTED','CONFIGURATION') then d.last_code end last_code,
    d.last_status,d.next_attempt_at,d.delivered_at,coalesce(r.retry_count,0) retry_count,
    s.enabled and coalesce(p.enabled,false) and d.state='dead' and (d.lease_until is null or d.lease_until<now()) retry_enabled
-  from public.webhook_deliveries d join public.webhook_outbox o on o.id=d.event_id join public.webhook_subscriptions s on s.id=d.subscription_id
+  from public.webhook_deliveries d join public.webhook_outbox o on o.id=d.event_id join authorised_subscription s on s.id=d.subscription_id
   left join public.webhook_projects p on p.project_id=s.project_id left join retries r on r.event_id=d.event_id
-  where s.id=p_subscription and s.project_id=any(p_projects) and o.project_id=s.project_id
+  where o.project_id=s.project_id
  ), mapped as materialized (
   select source.*,jsonb_build_object(
     'event',case event_type when 'interview.started' then 'Interview started' when 'interview.completed' then 'Interview completed' when 'report.ready' then 'Report ready' else 'Interview update' end,
