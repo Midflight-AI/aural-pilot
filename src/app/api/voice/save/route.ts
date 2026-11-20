@@ -18,8 +18,11 @@ import {
 const log = createLogger("api/voice/save");
 const voiceSaveOps: VoiceSaveOps = {
   async insertMessages(sessionId, messages) {
-    await supabaseAdmin.from("messages").insert(
-      messages.map((m) => ({
+    // Database defaults give every row in one insert the same timestamp.
+    const firstTurnMs = Date.now() - messages.length + 1;
+    const { error } = await supabaseAdmin.from("messages").insert(
+      messages.map((m, index) => ({
+        timestamp: new Date(firstTurnMs + index).toISOString(),
         sessionId,
         role: m.role === "user" ? ("USER" as const) : ("ASSISTANT" as const),
         content: m.content,
@@ -29,6 +32,7 @@ const voiceSaveOps: VoiceSaveOps = {
         transcription: m.source === "chat" ? "chat" : null,
       })),
     );
+    if (error) throw error;
   },
   async loadSessionForCompletion(sessionId) {
     const { data } = await supabaseAdmin
