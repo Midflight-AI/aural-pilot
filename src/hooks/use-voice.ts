@@ -41,6 +41,7 @@ export interface InterviewContext {
   followUpDepth: string;
   startQuestionIndex?: number;
   questions: Array<{
+  id?: string;
   text: string;
   type: string;
   description?: string | null;
@@ -84,6 +85,7 @@ interface VoiceState {
 }
 
 interface TrackedMessage {
+  questionId?: string;
   role: "user" | "assistant";
   content: string;
   source?: "voice" | "chat";
@@ -190,6 +192,7 @@ export function useVoice({
   const currentQuestionIndexRef = useRef(
     interviewContext.startQuestionIndex ?? 0
   );
+  const questionIds = useRef(interviewContext.questions.map(q => q.id));
   const totalQuestionsRef = useRef(interviewContext.questions.length);
   const latestCodeUpdateRef = useRef<{ content: string; language: string } | null>(
     null
@@ -430,7 +433,7 @@ export function useVoice({
 
     lastOnAIResponseRef.current = trimmed;
     onAIResponseRef.current?.(trimmed);
-    trackedMessagesRef.current.push({
+    trackedMessagesRef.current.push({ questionId: questionIds.current[currentQuestionIndexRef.current],
       role: "assistant",
       content: trimmed,
     });
@@ -765,7 +768,7 @@ export function useVoice({
       // before this is called by the question_change handler).
       const pendingAsrText = asrBufferRef.current.trim();
       if (pendingAsrText) {
-        trackedMessagesRef.current.push({ role: "user", content: pendingAsrText });
+        trackedMessagesRef.current.push({ questionId: questionIds.current[currentQuestionIndexRef.current], role: "user", content: pendingAsrText });
         asrBufferRef.current = "";
       }
 
@@ -996,7 +999,7 @@ export function useVoice({
             } else {
               lastFinalUserTranscriptRef.current = { text: normalized, at: Date.now() };
               onTranscript?.(finalText, true);
-              trackedMessagesRef.current.push({
+              trackedMessagesRef.current.push({ questionId: questionIds.current[currentQuestionIndexRef.current],
                 role: "user",
                 content: finalText,
               });
@@ -1142,6 +1145,7 @@ export function useVoice({
 
           // Persist messages from the previous question (fire-and-forget)
           saveProgress(idx);
+          currentQuestionIndexRef.current = idx;
 
           setState((s) => ({
             ...s,
@@ -1408,7 +1412,7 @@ export function useVoice({
       const connector = relayConnectorRef.current;
       if (!connector?.isReady) return;
 
-      trackedMessagesRef.current.push({ role: "user", content: trimmed, source: "chat" });
+      trackedMessagesRef.current.push({ questionId: questionIds.current[currentQuestionIndexRef.current], role: "user", content: trimmed, source: "chat" });
       lastSentChatInputRef.current = {
         text: trimmed.replace(/\s+/g, " ").trim().toLowerCase(),
         at: Date.now(),
@@ -1439,12 +1443,12 @@ export function useVoice({
     // Flush any pending buffers before saving
     const pendingAsrText = asrBufferRef.current.trim();
     if (pendingAsrText) {
-      trackedMessagesRef.current.push({ role: "user", content: pendingAsrText });
+      trackedMessagesRef.current.push({ questionId: questionIds.current[currentQuestionIndexRef.current], role: "user", content: pendingAsrText });
       asrBufferRef.current = "";
     }
     const pendingChatText = chatBufferRef.current.trim();
     if (pendingChatText) {
-      trackedMessagesRef.current.push({
+      trackedMessagesRef.current.push({ questionId: questionIds.current[currentQuestionIndexRef.current],
         role: "assistant",
         content: pendingChatText,
       });

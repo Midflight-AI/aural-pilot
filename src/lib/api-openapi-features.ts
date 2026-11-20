@@ -1,4 +1,5 @@
 export const candidateFeatureProperties = {
+  followUpQuestions: { type: "array", maxItems: 5, items: { type: "string", minLength: 1, maxLength: 1000 }, description: "Private questions for this invite. Optional at creation." },
   inviteStatus: { type: "string", enum: ["active", "cancelled", "expired"] },
   inviteExpiresAt: { type: ["string", "null"], format: "date-time" },
   inviteVersion: { type: "integer", minimum: 1 },

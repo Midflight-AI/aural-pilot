@@ -1,3 +1,4 @@
+import { reportEvidence } from "@/lib/report-evidence";
 import { svgDataUrlToPng } from "@/lib/ai/convert-svg";
 import { extractJson } from "@/lib/ai/extract-json";
 import { buildSummaryPrompt } from "@/lib/ai/prompts/summary";
@@ -17,8 +18,11 @@ import {
 const log = createLogger("api/voice/save");
 const voiceSaveOps: VoiceSaveOps = {
   async insertMessages(sessionId, messages) {
-    await supabaseAdmin.from("messages").insert(
-      messages.map((m) => ({
+    // Database defaults give every row in one insert the same timestamp.
+    const firstTurnMs = Date.now() - messages.length + 1;
+    const { error } = await supabaseAdmin.from("messages").insert(
+      messages.map((m, index) => ({
+        timestamp: new Date(firstTurnMs + index).toISOString(),
         sessionId,
         role: m.role === "user" ? ("USER" as const) : ("ASSISTANT" as const),
         content: m.content,
@@ -28,6 +32,7 @@ const voiceSaveOps: VoiceSaveOps = {
         transcription: m.source === "chat" ? "chat" : null,
       })),
     );
+    if (error) throw error;
   },
   async loadSessionForCompletion(sessionId) {
     const { data } = await supabaseAdmin
@@ -42,6 +47,10 @@ const voiceSaveOps: VoiceSaveOps = {
       })
       .single();
 
+    if (data?.questionPlan && data.interview) {
+      data.interview.questions = data.questionPlan.questions;
+      data.interview.assessmentCriteria = data.questionPlan.assessmentCriteria;
+    }
     return (data as CompletionSession | null) ?? null;
   },
   async loadActivitySegments(sessionId) {
@@ -88,6 +97,9 @@ const voiceSaveOps: VoiceSaveOps = {
       })
       .single();
 
+    if (data?.questionPlan && data.interview) {
+      data.interview.questions = data.questionPlan.questions;
+    }
     return (data as ProgressSession | null) ?? null;
   },
   async updateSession(sessionId, payload) {
@@ -129,7 +141,8 @@ async function generateSummary(
       return;
     }
 
-    const whiteboardDrawingsRaw = allMessages
+    const evidence = reportEvidence(questions ?? [], allMessages);
+    const whiteboardDrawingsRaw = evidence.turns
       .filter((m) => m.contentType === "WHITEBOARD" && m.whiteboardData)
       .map((m) => {
         const data = m.whiteboardData as Record<string, unknown>;
@@ -148,7 +161,7 @@ async function generateSummary(
       })),
     );
 
-    const codeSnippetsInput = allMessages
+    const codeSnippetsInput = evidence.turns
       .filter(
         (m) => (m.contentType as string) === "CODE" && m.whiteboardData,
       )
@@ -163,7 +176,7 @@ async function generateSummary(
       .filter((s) => s.code.trim().length > 0);
 
     const provider = getProvider(REPORT_MODEL);
-    const textMessages = allMessages
+    const textMessages = evidence.turns
       .filter((m) => m.contentType === "TEXT")
       .map((m) => ({
         role: m.role === "USER" ? "user" : "assistant",
@@ -178,7 +191,7 @@ async function generateSummary(
       textMessages,
       objective,
       assessmentCriteria,
-      questions,
+      evidence.questions,
       language,
       drawingsInput,
       codeInput,
@@ -209,7 +222,7 @@ async function generateSummary(
           textMessages,
           objective,
           assessmentCriteria,
-          questions,
+          evidence.questions,
           language,
           textOnlyDrawings,
           codeInput,
@@ -237,12 +250,12 @@ async function generateSummary(
     }
 
     const insightsData: Record<string, unknown> = {
-      keyInsights: parsed.keyInsights ?? [],
+      keyInsights: [...(Array.isArray(parsed.keyInsights) ? parsed.keyInsights : []), ...evidence.supporting],
     };
-    if (parsed.criteriaEvaluations) {
+    if (evidence.canScore && parsed.criteriaEvaluations) {
       insightsData.criteriaEvaluations = parsed.criteriaEvaluations;
     }
-    if (parsed.questionEvaluations) {
+    if (evidence.canScore && parsed.questionEvaluations) {
       insightsData.questionEvaluations = parsed.questionEvaluations;
     }
     if (parsed.researchFindings) {

@@ -40,6 +40,7 @@ export async function GET(
   return Response.json({
     data: {
       ...copy,
+      supportsInviteQuestions: true,
       _count: {
         sessions: sessions?.length ?? 0,
       },

@@ -12,13 +12,17 @@ export async function POST(req: Request) {
   const { interviewId, sessionId } = await req.json();
 
   try {
-    const { data: interview } = await supabaseAdmin
-      .from("interviews")
-      .select("*, questions(*)")
-      .eq("id", interviewId)
-      .order("order", { referencedTable: "questions", ascending: true })
+    const { data: session } = await supabaseAdmin
+      .from("sessions")
+      .select("questionPlan, interview:interviews!inner(*, questions(*))")
+      .eq("id", sessionId)
+      .eq("interviewId", interviewId)
+      .order("order", { referencedTable: "interviews.questions", ascending: true })
       .single();
 
+    const joined = session?.interview;
+    const interview = Array.isArray(joined) ? joined[0] : joined;
+    if (interview && session?.questionPlan) interview.questions = session.questionPlan.questions;
     if (!interview) {
       return NextResponse.json(
         { error: "Interview not found" },

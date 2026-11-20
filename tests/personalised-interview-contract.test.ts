@@ -44,3 +44,17 @@ test('creation route passes scoped atomic payload and rejects ambiguous or forei
   assert.deepEqual((payload.p_input as Record<string,unknown>).questions,[{text:'Anything else?',isRequired:false,maxFollowUps:0}]);
  }finally{globalThis.fetch=original;delete process.env.AURAL_INVITE_LIFECYCLE_ENABLED;}
 });
+
+import { reportEvidence } from "../src/lib/report-evidence";
+test("only core turns reach the scorer and private answers remain supporting evidence", () => {
+  const plan = [{ id: "1", text: "Reconcile a pay run" }, { id: "2", text: "Check an award" }, { id: "3", text: "Explain your Xero reconciliation", source: "invite" }];
+  const turns = [
+    { questionId: "1", role: "USER", content: "I compare the register with the ledger." },
+    { questionId: "3", role: "USER", content: "I used the Xero clearing account." },
+  ];
+  const evidence = reportEvidence(plan, turns);
+  assert.equal(reportEvidence(plan, [turns[1]]).canScore, false);
+  assert.deepEqual(evidence.questions, [plan[0]]);
+  assert.deepEqual(evidence.turns, [turns[0]]);
+  assert.deepEqual(evidence.supporting, ["Supporting evidence — Explain your Xero reconciliation\nApplicant: I used the Xero clearing account."]);
+});
