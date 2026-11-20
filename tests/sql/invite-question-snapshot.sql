@@ -8,6 +8,13 @@ begin
   interview := (public.create_api_interview(actor, project, 'bug18-payroll-role',
     '{"title":"AU Payroll Officer","voiceEnabled":true,"chatEnabled":false,"videoEnabled":false,"aiName":"Tester","aiTone":"FRIENDLY","followUpDepth":"LIGHT","language":"en","antiCheatingEnabled":false,"assessmentCriteria":[{"name":"Accuracy","description":"Explains reconciliation controls"}],"questions":[{"text":"How do you reconcile a payroll run?"},{"text":"How do you check award rates?"}]}')->>'id')::uuid;
   foreach question in array array['How did you reconcile your fortnightly payroll in Xero?', 'How did you check award changes in your weekly pay run?', null] loop
+    if cardinality(plans) = 1 then
+      update public.questions set text='Changed core' where "interviewId"=interview and "order"=0;
+      update public.interviews set "assessmentCriteria"='[]' where id=interview;
+    elsif cardinality(plans) = 2 then
+      update public.questions set text='How do you reconcile a payroll run?' where "interviewId"=interview and "order"=0;
+      update public.interviews set "assessmentCriteria"='[{"name":"Accuracy"}]' where id=interview;
+    end if;
     item := jsonb_build_object('name',case cardinality(plans) when 0 then 'Fictional Alex' when 1 then 'Fictional Lee' else 'Legacy fixture' end);
     if question is not null then item := item || jsonb_build_object('followUpQuestions', jsonb_build_array(question)); end if;
     batch := jsonb_build_array(item);
