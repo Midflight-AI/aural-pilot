@@ -17,7 +17,7 @@ export function buildSummaryPrompt(
   messages: { role: string; content: string }[],
   objective?: string | null,
   assessmentCriteria?: { name: string; description: string }[] | null,
-  questions?: { text: string; order: number; type?: string }[] | null,
+  questions?: { text: string; order: number; source?: string; type?: string }[] | null,
   language?: string | null,
   whiteboardDrawings?: WhiteboardDrawingInput[] | null,
   codeSnippets?: CodeSnippetInput[] | null
@@ -33,7 +33,7 @@ export function buildSummaryPrompt(
   // ── Questions section ──────────────────────────────────────────
   const questionsSection =
     questions && questions.length > 0
-      ? `\n\nInterview Questions:\n${questions.map((q, i) => `${i + 1}. ${q.type ? `[${q.type}] ` : ""}${q.text}`).join("\n")}`
+      ? `\n\nInterview Questions:\n${questions.map((q, i) => `${i + 1}. ${q.source === "invite" ? "[Supporting evidence only] " : ""}${q.type ? `[${q.type}] ` : ""}${q.text}`).join("\n")}`
       : "";
 
   // ── Whiteboard drawings section (text context) ─────────────────
@@ -94,7 +94,7 @@ export function buildSummaryPrompt(
   // ── Per-question evaluation section ────────────────────────────
   const questionEvalInstruction =
     questions && questions.length > 0
-      ? `6. For EACH interview question, evaluate the participant's response: how well they addressed the question, key strengths, areas for improvement, and a score (1-10)\n`
+      ? `6. For each core question actually asked in the transcript, evaluate the participant's response: how well they addressed the question, key strengths, areas for improvement, and a score (1-10)\n`
       : "";
 
   const questionEvalJsonField =
@@ -133,6 +133,7 @@ Transcript:
 ${transcript}
 
 Your analysis should:
+Use only the transcript as evidence. Use the exact question text in questionEvaluations. Omit questions that were never asked. Never infer an answer.
 1. Summarize the key points from the participant's answers
 2. Evaluate how well the participant addressed each topic
 3. Identify recurring themes and notable insights

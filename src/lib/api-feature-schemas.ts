@@ -10,6 +10,10 @@ export const apiCandidateDetailsSchema = z.object({
   workExperience: z.string().nullable().optional(),
 });
 
+export const apiInviteSchema = apiCandidateDetailsSchema.extend({
+  followUpQuestions: z.array(z.string().trim().min(1).max(1000)).max(5).optional(),
+});
+
 export const apiQuestionDetailsSchema = z.object({
   description: z.string().nullable().optional(),
   starterCode: z.record(z.string(), z.string()).nullable().optional(),

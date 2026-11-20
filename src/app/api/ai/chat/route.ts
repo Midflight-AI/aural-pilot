@@ -15,13 +15,16 @@ export async function POST(req: Request) {
     await req.json();
 
   try {
-    const { data: interview } = await supabaseAdmin
-      .from("interviews")
-      .select("*, questions(*)")
-      .eq("id", interviewId)
-      .order("order", { referencedTable: "questions", ascending: true })
+    const { data: session } = await supabaseAdmin
+      .from("sessions")
+      .select("questionPlan, interview:interviews!inner(*, questions(*))")
+      .eq("id", sessionId)
+      .eq("interviewId", interviewId)
+      .order("order", { referencedTable: "interviews.questions", ascending: true })
       .single();
 
+    const interview = session?.interview;
+    if (interview && session?.questionPlan) interview.questions = session.questionPlan.questions;
     if (!interview) {
       return NextResponse.json(
         { error: "Interview not found" },
@@ -105,7 +108,6 @@ export async function POST(req: Request) {
               questionAdvanced = true;
               log.info("Fallback: detected question advancement without marker", {
                 sessionId,
-                nextQuestionText: nextQ.text,
                 matchRatio,
               });
             }
@@ -117,6 +119,7 @@ export async function POST(req: Request) {
     await supabaseAdmin.from("messages").insert({
       sessionId,
       role: "ASSISTANT" as const,
+      questionId: interview.questions[(currentQuestionIndex ?? 0) + (questionAdvanced ? 1 : 0)]?.id ?? null,
       content: cleanContent,
       wordCount: cleanContent.split(/\s+/).length,
     });

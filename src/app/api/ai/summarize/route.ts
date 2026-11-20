@@ -1,3 +1,4 @@
+import { reportEvidence } from "@/lib/report-evidence";
 import { svgDataUrlToPng } from "@/lib/ai/convert-svg";
 import { extractJson } from "@/lib/ai/extract-json";
 import { createLogger } from "@/lib/logger";
@@ -46,6 +47,7 @@ export async function POST(req: Request) {
     };
 
     const msgs = (interviewSession.messages ?? []) as {
+      questionId?: string | null;
       contentType: string;
       whiteboardData: Record<string, unknown> | null;
       whiteboardImageUrl: string | null;
@@ -53,9 +55,14 @@ export async function POST(req: Request) {
       content: string;
     }[];
 
+    if (interviewSession.questionPlan) {
+      interview.questions = interviewSession.questionPlan.questions;
+      interview.assessmentCriteria = interviewSession.questionPlan.assessmentCriteria;
+    }
     const criteria = interview.assessmentCriteria;
 
-    const whiteboardDrawingsRaw = msgs
+    const evidence = reportEvidence(interview.questions, msgs);
+    const whiteboardDrawingsRaw = evidence.turns
       .filter((m) => m.contentType === "WHITEBOARD" && m.whiteboardData)
       .map((m) => ({
         label: (m.whiteboardData?.label as string) || "Untitled Drawing",
@@ -71,7 +78,7 @@ export async function POST(req: Request) {
       })),
     );
 
-    const codeSnippetsInput = msgs
+    const codeSnippetsInput = evidence.turns
       .filter((m) => m.contentType === "CODE" && m.whiteboardData)
       .map((m) => ({
         label: (m.whiteboardData?.label as string) || "Untitled Snippet",
@@ -81,9 +88,9 @@ export async function POST(req: Request) {
       .filter((s) => s.code.trim().length > 0);
 
     const provider = getProvider(REPORT_MODEL);
-    const textMessages = msgs
+    const textMessages = evidence.turns
       .filter((m) => m.contentType === "TEXT")
-      .map((m) => ({ role: m.role, content: m.content }));
+      .map((m) => ({ role: m.role.toLowerCase(), content: m.content }));
     const drawingsInput =
       whiteboardDrawings.length > 0 ? whiteboardDrawings : null;
     const codeInput = codeSnippetsInput.length > 0 ? codeSnippetsInput : null;
@@ -93,7 +100,7 @@ export async function POST(req: Request) {
       textMessages,
       interview.objective,
       criteria,
-      interview.questions,
+      evidence.questions,
       interview.language,
       drawingsInput,
       codeInput,
@@ -124,7 +131,7 @@ export async function POST(req: Request) {
           textMessages,
           interview.objective,
           criteria,
-          interview.questions,
+          evidence.questions,
           interview.language,
           textOnlyDrawings,
           codeInput,
@@ -143,7 +150,7 @@ export async function POST(req: Request) {
     const parsed = extractJson(response.content);
 
     const insightsData: Record<string, unknown> = {
-      keyInsights: parsed.keyInsights ?? [],
+      keyInsights: [...(Array.isArray(parsed.keyInsights) ? parsed.keyInsights : []), ...evidence.supporting],
     };
     if (parsed.criteriaEvaluations) {
       insightsData.criteriaEvaluations = parsed.criteriaEvaluations;
