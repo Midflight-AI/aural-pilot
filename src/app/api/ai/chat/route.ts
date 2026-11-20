@@ -23,7 +23,8 @@ export async function POST(req: Request) {
       .order("order", { referencedTable: "interviews.questions", ascending: true })
       .single();
 
-    const interview = session?.interview;
+    const joined = session?.interview;
+    const interview = Array.isArray(joined) ? joined[0] : joined;
     if (interview && session?.questionPlan) interview.questions = session.questionPlan.questions;
     if (!interview) {
       return NextResponse.json(
