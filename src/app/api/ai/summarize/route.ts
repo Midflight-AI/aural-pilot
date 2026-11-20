@@ -152,10 +152,10 @@ export async function POST(req: Request) {
     const insightsData: Record<string, unknown> = {
       keyInsights: [...(Array.isArray(parsed.keyInsights) ? parsed.keyInsights : []), ...evidence.supporting],
     };
-    if (parsed.criteriaEvaluations) {
+    if (evidence.canScore && parsed.criteriaEvaluations) {
       insightsData.criteriaEvaluations = parsed.criteriaEvaluations;
     }
-    if (parsed.questionEvaluations) {
+    if (evidence.canScore && parsed.questionEvaluations) {
       insightsData.questionEvaluations = parsed.questionEvaluations;
     }
     if (parsed.researchFindings) {

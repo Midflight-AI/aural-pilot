@@ -53,7 +53,8 @@ test("only core turns reach the scorer and private answers remain supporting evi
     { questionId: "3", role: "USER", content: "I used the Xero clearing account." },
   ];
   const evidence = reportEvidence(plan, turns);
+  assert.equal(reportEvidence(plan, [turns[1]]).canScore, false);
   assert.deepEqual(evidence.questions, [plan[0]]);
   assert.deepEqual(evidence.turns, [turns[0]]);
-  assert.deepEqual(evidence.supporting, ["Supporting evidence — Explain your Xero reconciliation\nI used the Xero clearing account."]);
+  assert.deepEqual(evidence.supporting, ["Supporting evidence — Explain your Xero reconciliation\nApplicant: I used the Xero clearing account."]);
 });
