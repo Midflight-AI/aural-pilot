@@ -8,6 +8,9 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import {
   handleVoiceSave,
+  resolveVoiceQuestionId,
+  sessionQuestionOrder,
+  type SessionQuestion,
   type ActivitySegment,
   type CompletionSession,
   type ProgressSession,
@@ -18,6 +21,23 @@ import {
 const log = createLogger("api/voice/save");
 const voiceSaveOps: VoiceSaveOps = {
   async insertMessages(sessionId, messages) {
+    // Resolve turns against this session's own questions (its invite plan when it has one).
+    const { data: session, error: sessionError } = await supabaseAdmin
+      .from("sessions")
+      .select("interviewId, questionPlan")
+      .eq("id", sessionId)
+      .single();
+    if (sessionError || !session) throw sessionError ?? new Error("Session not found");
+    let questions = (session.questionPlan as { questions?: SessionQuestion[] } | null)?.questions;
+    if (!questions) {
+      const { data, error } = await supabaseAdmin
+        .from("questions")
+        .select("id, order")
+        .eq("interviewId", session.interviewId);
+      if (error) throw error;
+      questions = data ?? [];
+    }
+    const ordered = sessionQuestionOrder(questions);
     // Database defaults give every row in one insert the same timestamp.
     const firstTurnMs = Date.now() - messages.length + 1;
     const { error } = await supabaseAdmin.from("messages").insert(
@@ -27,7 +47,7 @@ const voiceSaveOps: VoiceSaveOps = {
         role: m.role === "user" ? ("USER" as const) : ("ASSISTANT" as const),
         content: m.content,
         contentType: "TEXT" as const,
-        questionId: m.questionId || null,
+        questionId: resolveVoiceQuestionId(m, ordered),
         wordCount: m.content.split(/\s+/).length,
         transcription: m.source === "chat" ? "chat" : null,
       })),

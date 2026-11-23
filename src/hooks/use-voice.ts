@@ -84,7 +84,13 @@ interface VoiceState {
   totalQuestions: number;
 }
 
+/** Attribute a turn to the question it was captured on, not the one active when it is saved. */
+function questionAt(ids: Array<string | undefined>, questionIndex: number) {
+  return { questionIndex, questionId: ids[questionIndex] };
+}
+
 interface TrackedMessage {
+  questionIndex?: number;
   questionId?: string;
   role: "user" | "assistant";
   content: string;
@@ -186,12 +192,14 @@ export function useVoice({
     text: string;
     session: number;
     utteranceId?: string;
+    questionIndex: number;
   } | null>(null);
   /** Relay `playbackCommitSessionRef` at the start of the current TTS utterance (first text or audio chunk). */
   const ttsUtteranceStartSessionRef = useRef(0);
   const currentQuestionIndexRef = useRef(
     interviewContext.startQuestionIndex ?? 0
   );
+  const assistantQuestionIndexRef = useRef(currentQuestionIndexRef.current);
   const questionIds = useRef(interviewContext.questions.map(q => q.id));
   const totalQuestionsRef = useRef(interviewContext.questions.length);
   const latestCodeUpdateRef = useRef<{ content: string; language: string } | null>(
@@ -424,7 +432,7 @@ export function useVoice({
     firstQueuedAudioAtRef.current = null;
   }, [clearPlaybackFlushTimer]);
 
-  const commitAssistantTranscript = useCallback((text: string, reason: string) => {
+  const commitAssistantTranscript = useCallback((text: string, reason: string, questionIndex: number) => {
     const trimmed = text.trim();
     if (!shouldCommitTranscript(lastOnAIResponseRef.current, trimmed)) {
       if (trimmed) log.debug(`Skipping duplicate ASSISTANT (${reason})`);
@@ -433,8 +441,9 @@ export function useVoice({
 
     lastOnAIResponseRef.current = trimmed;
     onAIResponseRef.current?.(trimmed);
-    trackedMessagesRef.current.push({ questionId: questionIds.current[currentQuestionIndexRef.current],
+    trackedMessagesRef.current.push({
       role: "assistant",
+      ...questionAt(questionIds.current, questionIndex),
       content: trimmed,
     });
     log.debug(`Tracked ASSISTANT (${reason}): "${trimmed.slice(0, 60)}..."`);
@@ -481,7 +490,7 @@ export function useVoice({
     pendingAssistantPlaybackCommitRef.current = null;
 
     const committed = text
-      ? commitAssistantTranscript(text, "after playback")
+      ? commitAssistantTranscript(text, "after playback", pending.questionIndex)
       : false;
     if (committed) {
       setState((s) => ({
@@ -609,6 +618,7 @@ export function useVoice({
       if (firstQueuedAudioAtRef.current === null) {
         firstQueuedAudioAtRef.current = performance.now();
         ttsUtteranceStartSessionRef.current = playbackCommitSessionRef.current;
+              assistantQuestionIndexRef.current = currentQuestionIndexRef.current;
       }
       queuedAudioChunksRef.current.push(float32);
       queuedAudioSamplesRef.current += float32.length;
@@ -768,7 +778,7 @@ export function useVoice({
       // before this is called by the question_change handler).
       const pendingAsrText = asrBufferRef.current.trim();
       if (pendingAsrText) {
-        trackedMessagesRef.current.push({ questionId: questionIds.current[currentQuestionIndexRef.current], role: "user", content: pendingAsrText });
+        trackedMessagesRef.current.push({ role: "user", ...questionAt(questionIds.current, currentQuestionIndexRef.current), content: pendingAsrText });
         asrBufferRef.current = "";
       }
 
@@ -999,8 +1009,9 @@ export function useVoice({
             } else {
               lastFinalUserTranscriptRef.current = { text: normalized, at: Date.now() };
               onTranscript?.(finalText, true);
-              trackedMessagesRef.current.push({ questionId: questionIds.current[currentQuestionIndexRef.current],
+              trackedMessagesRef.current.push({
                 role: "user",
+                ...questionAt(questionIds.current, typeof msg.questionIndex === "number" ? msg.questionIndex : currentQuestionIndexRef.current),
                 content: finalText,
               });
               log.debug(
@@ -1035,6 +1046,7 @@ export function useVoice({
             chatBufferRef.current += text;
             if (wasEmpty) {
               ttsUtteranceStartSessionRef.current = playbackCommitSessionRef.current;
+              assistantQuestionIndexRef.current = currentQuestionIndexRef.current;
             }
             setState((s) => ({
               ...s,
@@ -1056,6 +1068,7 @@ export function useVoice({
             chatBufferRef.current += (chatBufferRef.current ? " " : "") + text;
             if (wasEmpty) {
               ttsUtteranceStartSessionRef.current = playbackCommitSessionRef.current;
+              assistantQuestionIndexRef.current = currentQuestionIndexRef.current;
             }
             setState((s) => ({
               ...s,
@@ -1100,6 +1113,7 @@ export function useVoice({
               text: fullResponse,
               session: ttsUtteranceStartSessionRef.current,
               utteranceId,
+              questionIndex: assistantQuestionIndexRef.current,
             };
           }
           tryCommitAssistantPlayback();
@@ -1144,6 +1158,11 @@ export function useVoice({
           const total = msg.totalQuestions as number;
 
           // Persist messages from the previous question (fire-and-forget)
+          const pendingAnswer = asrBufferRef.current.trim();
+          if (pendingAnswer) {
+            trackedMessagesRef.current.push({ role: "user", ...questionAt(questionIds.current, currentQuestionIndexRef.current), content: pendingAnswer });
+            asrBufferRef.current = "";
+          }
           saveProgress(idx);
           currentQuestionIndexRef.current = idx;
 
@@ -1412,7 +1431,7 @@ export function useVoice({
       const connector = relayConnectorRef.current;
       if (!connector?.isReady) return;
 
-      trackedMessagesRef.current.push({ questionId: questionIds.current[currentQuestionIndexRef.current], role: "user", content: trimmed, source: "chat" });
+      trackedMessagesRef.current.push({ role: "user", ...questionAt(questionIds.current, currentQuestionIndexRef.current), content: trimmed, source: "chat" });
       lastSentChatInputRef.current = {
         text: trimmed.replace(/\s+/g, " ").trim().toLowerCase(),
         at: Date.now(),
@@ -1443,13 +1462,14 @@ export function useVoice({
     // Flush any pending buffers before saving
     const pendingAsrText = asrBufferRef.current.trim();
     if (pendingAsrText) {
-      trackedMessagesRef.current.push({ questionId: questionIds.current[currentQuestionIndexRef.current], role: "user", content: pendingAsrText });
+      trackedMessagesRef.current.push({ role: "user", ...questionAt(questionIds.current, currentQuestionIndexRef.current), content: pendingAsrText });
       asrBufferRef.current = "";
     }
     const pendingChatText = chatBufferRef.current.trim();
     if (pendingChatText) {
-      trackedMessagesRef.current.push({ questionId: questionIds.current[currentQuestionIndexRef.current],
+      trackedMessagesRef.current.push({
         role: "assistant",
+        ...questionAt(questionIds.current, assistantQuestionIndexRef.current),
         content: pendingChatText,
       });
       chatBufferRef.current = "";
