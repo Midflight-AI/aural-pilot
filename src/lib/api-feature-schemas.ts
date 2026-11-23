@@ -10,8 +10,18 @@ export const apiCandidateDetailsSchema = z.object({
   workExperience: z.string().nullable().optional(),
 });
 
+const inviteQuestionText = z.string().trim().min(1).max(1000);
+
+/** A plain string keeps the original contract: no note and no follow-ups. */
 export const apiInviteSchema = apiCandidateDetailsSchema.extend({
-  followUpQuestions: z.array(z.string().trim().min(1).max(1000)).max(5).optional(),
+  followUpQuestions: z.array(z.union([
+    inviteQuestionText,
+    z.object({
+      text: inviteQuestionText,
+      interviewerNote: z.string().trim().min(1).max(1200).optional(),
+      maxFollowUps: z.number().int().min(0).max(2).optional(),
+    }).strict(),
+  ])).max(5).optional(),
 });
 
 export const apiQuestionDetailsSchema = z.object({

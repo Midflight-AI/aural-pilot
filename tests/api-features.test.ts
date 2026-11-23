@@ -33,6 +33,8 @@ test("OpenAPI references resolve and document the ported routes and writable fie
   for (const path of ["/sessions/{id}/report", "/interviews/{id}/practices", "/practices/{id}", "/interviews/{id}/sessions/end", "/interviews/{id}/candidates/{candidateId}"]) assert.ok(spec.paths[path]);
   for (const name of ["Question", "QuestionCreate", "QuestionPatch"]) assert.ok(spec.components.schemas[name].properties.starterCode);
   for (const name of ["Candidate", "CandidateCreate"]) assert.ok(spec.components.schemas[name].properties.birthday);
+  assert.equal(spec.components.schemas.InterviewCreate.properties.questions.items.properties.interviewerNote.maxLength, 1200);
+  assert.deepEqual(spec.components.schemas.CandidateCreate.properties.followUpQuestions.items.oneOf.map((item: { type: string }) => item.type), ["string", "object"]);
   assert.equal(spec.paths["/interviews/{id}/sessions/end"].post.requestBody.content["application/json"].schema.properties.dryRun.default, true);
   assert.equal(spec.paths["/interviews/{id}/invites"], undefined);
 });

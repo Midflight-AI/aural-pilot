@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {initialQuestionSchema,selectInterviewProject} from '../src/lib/personalised-interview-contract';
 import {questionFollowUpLimit} from '../src/lib/follow-up-depth';
+import {interviewerNote,interviewerNoteLine} from '../src/lib/follow-up-policy';
+import {apiInviteSchema} from '../src/lib/api-feature-schemas';
 test('project selection never silently chooses among multiple projects',()=>{
  assert.equal(selectInterviewProject(undefined,['a','b']),null);
  assert.equal(selectInterviewProject('b',['a','b']),'b');
@@ -12,6 +14,23 @@ test('atomic question contract preserves legacy replay and supports optional clo
  const old=[{text:'Tell us about your work'}];assert.deepEqual(initialQuestionSchema.parse(old),old);
  assert.ok(initialQuestionSchema.safeParse([{text:'Anything to add?',isRequired:false,maxFollowUps:0}]).success);
  for(const maxFollowUps of [-1,3,1.5,'1'])assert.equal(initialQuestionSchema.safeParse([{text:'Question',maxFollowUps}]).success,false);
+});
+test('core questions accept a private interviewer note',()=>{
+ assert.deepEqual(initialQuestionSchema.parse([{text:'Reconcile a pay run',maxFollowUps:2,interviewerNote:'  Names a specific check  '}]),[{text:'Reconcile a pay run',maxFollowUps:2,interviewerNote:'Names a specific check'}]);
+ for(const note of ['',' ','x'.repeat(1201),42])assert.equal(initialQuestionSchema.safeParse([{text:'Question',interviewerNote:note}]).success,false);
+ assert.equal(initialQuestionSchema.safeParse([{text:'Question',note:'Unknown key'}]).success,false);
+});
+test('invite questions accept legacy strings and objects with a note and limit',()=>{
+ const followUpQuestions=['Which payroll system did you use?',{text:'How did you fix a missed super payment?',interviewerNote:'Explains the fix and the outcome',maxFollowUps:2},{text:'Which award do you know best?'}];
+ assert.deepEqual(apiInviteSchema.parse({followUpQuestions}).followUpQuestions,followUpQuestions);
+ for(const item of [{text:'Q',maxFollowUps:3},{text:'Q',interviewerNote:'x'.repeat(1201)},{text:'Q',extra:true},{interviewerNote:'No text'},{text:''},''])
+  assert.equal(apiInviteSchema.safeParse({followUpQuestions:[item]}).success,false);
+ assert.equal(apiInviteSchema.safeParse({followUpQuestions:Array(6).fill('Q')}).success,false);
+});
+test('the interviewer note is read from options only when it is a real string',()=>{
+ assert.equal(interviewerNote({maxFollowUps:2,interviewerNote:' Shows the result '}),'Shows the result');
+ for(const options of [null,undefined,{},{interviewerNote:''},{interviewerNote:42},'note'])assert.equal(interviewerNote(options),null);
+ assert.match(interviewerNoteLine('Shows the result'),/^Private interviewer note .*never reveal.*: Shows the result$/);
 });
 test('per-question limit overrides depth without changing legacy behavior',()=>{
  assert.equal(questionFollowUpLimit('DEEP',{options:{maxFollowUps:0}}),0);

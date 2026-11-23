@@ -5,10 +5,12 @@ import {
     followUpDepthPromptCopy,
     followUpLimitNotice,
     followUpsSpentOnQuestion,
+    promptQuestionList,
     shouldAllowTtsBargeIn,
     shouldSendFollowUpLimitNotice,
 } from "../server/openai-voice-relay-helpers";
 import { maxFollowUpsForDepth } from "../src/lib/follow-up-depth";
+import { FOLLOW_UP_POLICY } from "../src/lib/follow-up-policy";
 
 test("does not allow TTS barge-in before assistant audio has actually started", () => {
   assert.equal(
@@ -177,4 +179,25 @@ test("the budget notice names the question and tells the model to transition", (
   assert.match(zh, /第3题/);
   assert.match(zh, /signal_question_change/);
   assert.match(zh, /不要再追问/);
+});
+
+test("a follow-up budget adds the shared answer-judging policy in both languages", () => {
+  for (const isZh of [false, true]) {
+    assert.ok(followUpDepthPromptCopy(2, isZh).rule.includes(FOLLOW_UP_POLICY), `isZh=${isZh}`);
+    assert.ok(!followUpDepthPromptCopy(0, isZh).rule.includes(FOLLOW_UP_POLICY), `isZh=${isZh}`);
+  }
+  assert.match(followUpDepthPromptCopy(2, true).rule, /^对每个问题，根据受访者的回答最多追问2次/);
+});
+
+test("the question list shows a private interviewer note only when present", () => {
+  const list = promptQuestionList([
+    { text: "How do you reconcile a pay run?", type: "OPEN_ENDED", options: { maxFollowUps: 2, interviewerNote: "Names a specific check and what it caught" } },
+    { text: "Anything to add?", type: "OPEN_ENDED", description: "Optional", options: { maxFollowUps: 0 } },
+  ], "MODERATE");
+  assert.equal(list, [
+    "  1. [OPEN_ENDED] How do you reconcile a pay run? (maximum follow-ups: 2)",
+    "     Private interviewer note on what a good answer shows (never reveal, quote, paraphrase or hint at it): Names a specific check and what it caught",
+    "  2. [OPEN_ENDED] Anything to add? (maximum follow-ups: 0)",
+    "     Context: Optional",
+  ].join("\n"));
 });

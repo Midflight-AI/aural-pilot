@@ -26,6 +26,7 @@ values('1a698808-3525-4887-91af-19f82b77a01b','22222222-2222-4222-8222-222222222
 \ir webhook-outbox.sql
 \ir webhook-controls.sql
 \ir ../../supabase/migrations/20261120033149_invite_question_snapshot.sql
+\ir ../../supabase/migrations/20261123063824_question_interviewer_notes.sql
 \ir invite-lifecycle.sql
 \ir invite-question-snapshot.sql
 \ir ../../supabase/migrations/004_interview_prep.sql

@@ -22,6 +22,7 @@ import { randomUUID } from "crypto";
 import { config } from "dotenv";
 import { WebSocket, WebSocketServer } from "ws";
 import { questionFollowUpLimit } from "../src/lib/follow-up-depth";
+import { interviewerNote } from "../src/lib/follow-up-policy";
 import { bt } from "../src/lib/i18n";
 import { createLogger } from "../src/lib/logger";
 import { callRelayLLM, logRelayLlmStartup } from "./relay-llm";
@@ -284,7 +285,7 @@ interface InterviewContext {
     text: string;
     type: string;
     description?: string | null;
-    options?: { options?: string[]; allowMultiple?: boolean; maxFollowUps?: number } | null;
+    options?: { options?: string[]; allowMultiple?: boolean; maxFollowUps?: number; interviewerNote?: string } | null;
     order: number;
   }>;
 }
@@ -2041,6 +2042,7 @@ async function handleBrowserConnection(browserWs: WebSocket, ctx: InterviewConte
 
     const followBudgetCtx = {
       isLastQuestion: currentQuestionIndex >= sortedQuestions.length - 1,
+      isResearch: currentQ.type === "RESEARCH",
     };
 
     if (forceSkip) {
@@ -2077,6 +2079,7 @@ async function handleBrowserConnection(browserWs: WebSocket, ctx: InterviewConte
       totalQs: sortedQuestions.length,
       qText: currentQ.text,
       qDescription: currentQ.description,
+      qNote: interviewerNote(currentQ.options),
       qType: currentQ.type,
       choiceInstruction,
       history,
