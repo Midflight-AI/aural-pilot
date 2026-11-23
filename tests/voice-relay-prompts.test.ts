@@ -187,6 +187,11 @@ test("follow-up budget lines carry the shared answer-judging policy except on RE
   for (const instruction of [PROMPTS.followUp.oneLeft("[NEXT]", research), PROMPTS.followUp.remaining(2, "[NEXT]", research)]) {
     assert.ok(!(instruction.en + instruction.zh).includes(FOLLOW_UP_POLICY));
   }
+  const judged = PROMPTS.followUp.remaining(2, "[NEXT]", ctx);
+  assert.doesNotMatch(judged.en, /probe further|already thorough/);
+  assert.match(judged.en, /When the answer is complete, acknowledge it and append \[NEXT\]\./);
+  assert.doesNotMatch(judged.zh, /根据回答内容决定是否需要追问/);
+  assert.match(PROMPTS.followUp.remaining(2, "[NEXT]", research).en, /whether to probe further/);
   const atLimit = PROMPTS.followUp.atLimit("[NEXT]", ctx);
   assert.ok(!(atLimit.en + atLimit.zh).includes(FOLLOW_UP_POLICY), "a limit of 0 keeps the existing copy");
 });

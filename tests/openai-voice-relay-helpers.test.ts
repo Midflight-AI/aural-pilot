@@ -189,6 +189,24 @@ test("a follow-up budget adds the shared answer-judging policy in both languages
   assert.match(followUpDepthPromptCopy(2, true).rule, /^对每个问题，根据受访者的回答最多追问2次/);
 });
 
+test("with a budget the vague-answer lines defer to the policy instead of asking to probe deeper", () => {
+  const en = followUpDepthPromptCopy(2, false);
+  assert.equal(en.vagueAnswer, " For any other answer, use the follow-up rule above.");
+  assert.equal(en.briefAnswer, "");
+  const zh = followUpDepthPromptCopy(2, true);
+  assert.equal(zh.vagueAnswer, "其他回答按上面的追问规则处理。");
+  assert.equal(zh.briefAnswer, "");
+});
+
+test("a zero budget keeps the existing vague-answer lines", () => {
+  const en = followUpDepthPromptCopy(0, false);
+  assert.equal(en.vagueAnswer, " If their answer is vague, ask them to elaborate before moving on.");
+  assert.equal(en.briefAnswer, " If their answer is too brief or vague, probe deeper.");
+  const zh = followUpDepthPromptCopy(0, true);
+  assert.equal(zh.vagueAnswer, "如果回答模糊，应追问以获取更多细节。");
+  assert.equal(zh.briefAnswer, "如果回答太简短或模糊，应追问以获取更多信息。");
+});
+
 test("the question list shows a private interviewer note only when present", () => {
   const list = promptQuestionList([
     { text: "How do you reconcile a pay run?", type: "OPEN_ENDED", options: { maxFollowUps: 2, interviewerNote: "Names a specific check and what it caught" } },

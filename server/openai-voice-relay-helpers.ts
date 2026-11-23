@@ -9,21 +9,29 @@ export const DEFAULT_TTS_BARGE_IN_MIN_AUDIO_BYTES = 32_000;
  *
  * A budget of zero needs its own wording: "at most 0 follow-ups" reads as a
  * riddle, and the model tends to improvise past it.
+ *
+ * `vagueAnswer` and `briefAnswer` end the prompt's "sufficiently discussed" and
+ * "not a substantive answer" rules (English ones carry their leading space).
+ * With a budget, FOLLOW_UP_POLICY alone decides when to probe, so they defer to it.
  */
 export function followUpDepthPromptCopy(
   maxFollowUps: number,
   isZh: boolean,
-): { summary: string; rule: string } {
+): { summary: string; rule: string; vagueAnswer: string; briefAnswer: string } {
   if (maxFollowUps === 0) {
     return isZh
       ? {
           summary: "不追问（受访者回答完当前问题后直接进入下一题）",
           rule: "这场面试不使用追问。提出问题、听完回答后就进入下一题。只有在回答完全听不懂或明显跑题时才追问一次。",
+          vagueAnswer: "如果回答模糊，应追问以获取更多细节。",
+          briefAnswer: "如果回答太简短或模糊，应追问以获取更多信息。",
         }
       : {
           summary:
             "no follow-ups — move on once the participant has answered the scripted question",
           rule: "This interview uses no follow-ups. Ask the scripted question, listen to the answer, then move on. Only probe if the answer was unintelligible or clearly about a different topic.",
+          vagueAnswer: " If their answer is vague, ask them to elaborate before moving on.",
+          briefAnswer: " If their answer is too brief or vague, probe deeper.",
         };
   }
 
@@ -32,10 +40,14 @@ export function followUpDepthPromptCopy(
     ? {
         summary: `每题最多${maxFollowUps}次追问`,
         rule: `对每个问题，根据受访者的回答最多追问${maxFollowUps}次，达到上限后必须进入下一题。语气要像友好、耐心的真人面试官，而不是冷冰冰地连珠发问。\n${FOLLOW_UP_POLICY}`,
+        vagueAnswer: "其他回答按上面的追问规则处理。",
+        briefAnswer: "",
       }
     : {
         summary: `at most ${maxFollowUps} follow-up${plural} per question`,
         rule: `For each question, ask at most ${maxFollowUps} follow-up${plural} based on the participant's answers, then move on — never exceed that limit. Sound like a warm, patient human interviewer, not a rapid-fire questionnaire.\n${FOLLOW_UP_POLICY}`,
+        vagueAnswer: " For any other answer, use the follow-up rule above.",
+        briefAnswer: "",
       };
 }
 

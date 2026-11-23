@@ -331,9 +331,18 @@ Important: when you are asking the participant to explain their approach (catego
     remaining(turnsLeft: number, nextToken: string, ctx: FollowUpBudgetContext): BiText {
       const noNext = noNextQuestionSuffix(ctx);
       const policy = answerPolicySuffix(ctx);
+      const decide = ctx.isResearch
+        ? {
+            zh: `根据回答内容决定是否需要追问。如果回答已经充分完整，可以简短感谢并在末尾加上 ${nextToken}。`,
+            en: `Decide based on the answer content whether to probe further. If the answer is already thorough, acknowledge and append ${nextToken}.`,
+          }
+        : {
+            zh: `回答完整时，简短确认并在末尾加上 ${nextToken}。`,
+            en: `When the answer is complete, acknowledge it and append ${nextToken}.`,
+          };
       return {
-        zh: `你还可以追问最多${turnsLeft}次。只有在对方确实是在回答当前问题时才应用这个追问预算；如果他们是在和你交流或问你问题，先自然回应。根据回答内容决定是否需要追问。如果回答已经充分完整，可以简短感谢并在末尾加上 ${nextToken}。${noNext.zh}${policy}`,
-        en: `You have up to ${turnsLeft} follow-ups remaining. Apply this follow-up budget only when the participant is actually answering the current question; if they are talking to you or asking a question, respond naturally first. Decide based on the answer content whether to probe further. If the answer is already thorough, acknowledge and append ${nextToken}.${noNext.en}${policy}`,
+        zh: `你还可以追问最多${turnsLeft}次。只有在对方确实是在回答当前问题时才应用这个追问预算；如果他们是在和你交流或问你问题，先自然回应。${decide.zh}${noNext.zh}${policy}`,
+        en: `You have up to ${turnsLeft} follow-ups remaining. Apply this follow-up budget only when the participant is actually answering the current question; if they are talking to you or asking a question, respond naturally first. ${decide.en}${noNext.en}${policy}`,
       };
     },
     /** The participant asked to skip; phrasing depends on whether anything follows. */
