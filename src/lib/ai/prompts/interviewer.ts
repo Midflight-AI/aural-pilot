@@ -1,4 +1,5 @@
 import { maxFollowUpsForDepth, questionFollowUpLimit } from "@/lib/follow-up-depth";
+import { FOLLOW_UP_POLICY, interviewerNote, interviewerNoteLine } from "@/lib/follow-up-policy";
 import type { Tables } from "@/lib/supabase/types";
 import type { LLMMessage } from "../types";
 
@@ -20,6 +21,8 @@ export function buildInterviewerPrompt(ctx: InterviewContext): LLMMessage[] {
       if ((qType === "SINGLE_CHOICE" || qType === "MULTIPLE_CHOICE") && opts?.options?.length) {
         line += ` | Options: ${opts.options.map((o, j) => `${String.fromCharCode(65 + j)}. ${o}`).join(", ")}`;
       }
+      const note = interviewerNote(q.options);
+      if (note) line += `\n   ${interviewerNoteLine(note)}`;
       return line;
     })
     .join("\n");
@@ -58,14 +61,14 @@ FOLLOW-UP STRATEGY (${interview.followUpDepth} depth — a HARD LIMIT of ${maxFo
 ${maxFollowUps === 0
     ? "- Ask only the scripted questions. Once the participant has answered, move on\n- Probe only if their answer was unintelligible or clearly about a different topic"
     : `- Ask at most ${maxFollowUps} follow-up${maxFollowUps === 1 ? "" : "s"} per scripted question, and only when the response is vague, short, or leaves a key thread unexplored\n- Move on as soon as you have a reasonable answer — you do not have to spend the full budget\n- Once you have asked ${maxFollowUps} follow-up${maxFollowUps === 1 ? "" : "s"} on a question, you MUST move to the next scripted question even if the topic feels unfinished`}
-- Answering a question the participant asks you, or repeating the question for them, does not count against this budget
+- Answering a question the participant asks you, or repeating the question for them, does not count against this budget${maxFollowUps === 0 ? "" : `\n\n${FOLLOW_UP_POLICY}`}
 
 CONVERSATION FLOW:
 1. If this is the start, introduce yourself warmly and explain the interview purpose
 2. Ask the current question from the script
 3. After each response:
    - Acknowledge what they shared (1 sentence)
-   - If the follow-up budget for this question still has room, ask 1 probing question; otherwise move to the next script question
+   - If the answer needs a follow-up and the follow-up budget for this question still has room, ask 1 probing question; otherwise move to the next script question
 4. After all script questions, ask: "Is there anything else you'd like to add?"
 5. Thank them sincerely and signal the interview is complete
 

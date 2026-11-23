@@ -1,3 +1,6 @@
+import { questionFollowUpLimit } from "../src/lib/follow-up-depth";
+import { FOLLOW_UP_POLICY, interviewerNote, interviewerNoteLine } from "../src/lib/follow-up-policy";
+
 export const DEFAULT_TTS_BARGE_IN_MIN_AUDIO_MS = 400;
 export const DEFAULT_TTS_BARGE_IN_MIN_AUDIO_BYTES = 32_000;
 
@@ -28,12 +31,37 @@ export function followUpDepthPromptCopy(
   return isZh
     ? {
         summary: `每题最多${maxFollowUps}次追问`,
-        rule: `对每个问题，根据受访者的回答最多追问${maxFollowUps}次，达到上限后必须进入下一题。语气要像友好、耐心的真人面试官，而不是冷冰冰地连珠发问。`,
+        rule: `对每个问题，根据受访者的回答最多追问${maxFollowUps}次，达到上限后必须进入下一题。语气要像友好、耐心的真人面试官，而不是冷冰冰地连珠发问。\n${FOLLOW_UP_POLICY}`,
       }
     : {
         summary: `at most ${maxFollowUps} follow-up${plural} per question`,
-        rule: `For each question, ask at most ${maxFollowUps} follow-up${plural} based on the participant's answers, then move on — never exceed that limit. Sound like a warm, patient human interviewer, not a rapid-fire questionnaire.`,
+        rule: `For each question, ask at most ${maxFollowUps} follow-up${plural} based on the participant's answers, then move on — never exceed that limit. Sound like a warm, patient human interviewer, not a rapid-fire questionnaire.\n${FOLLOW_UP_POLICY}`,
       };
+}
+
+export interface PromptQuestion {
+  text: string;
+  type: string;
+  description?: string | null;
+  options?: { options?: string[]; allowMultiple?: boolean; maxFollowUps?: number; interviewerNote?: string } | null;
+}
+
+/** The question list shared by the default and the introduction system prompts. */
+export function promptQuestionList(questions: PromptQuestion[], followUpDepth: string): string {
+  return questions.map((q, i) => {
+    let entry = `  ${i + 1}. [${q.type}] ${q.text} (maximum follow-ups: ${questionFollowUpLimit(followUpDepth, q)})`;
+    if (q.description) entry += `\n     Context: ${q.description}`;
+    if (q.options?.options?.length) {
+      const labels = q.options.options.map((o, j) => `${String.fromCharCode(65 + j)}) ${o}`).join(", ");
+      const multi = q.options.allowMultiple ? " (multiple choice)" : " (single choice)";
+      entry += `\n     Options${multi}: ${labels}`;
+    }
+    const note = interviewerNote(q.options);
+    if (note) entry += `\n     ${interviewerNoteLine(note)}`;
+    if (q.type === "CODING") entry += `\n     Note: The participant has a code editor. You cannot see their code unless they describe it.`;
+    if (q.type === "WHITEBOARD") entry += `\n     Note: The participant has a whiteboard. You will receive image updates silently — do NOT speak when you receive them. Only describe what you see when the participant asks you to look at it.`;
+    return entry;
+  }).join("\n");
 }
 
 /**

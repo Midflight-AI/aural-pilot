@@ -23,6 +23,8 @@ import {
   followUpDepthPromptCopy,
   followUpLimitNotice,
   followUpsSpentOnQuestion,
+  type PromptQuestion,
+  promptQuestionList,
   shouldAllowTtsBargeIn,
   shouldSendFollowUpLimitNotice,
 } from "./openai-voice-relay-helpers";
@@ -214,11 +216,7 @@ interface InterviewContext {
   language: string;
   followUpDepth: string;
   startQuestionIndex?: number;
-  questions: Array<{
-    text: string;
-    type: string;
-    description?: string | null;
-    options?: { options?: string[]; allowMultiple?: boolean; maxFollowUps?: number } | null;
+  questions: Array<PromptQuestion & {
     starterCode?: { language: string; code: string } | null;
     order: number;
   }>;
@@ -265,18 +263,7 @@ function buildSystemPrompt(ctx: InterviewContext, startIdx: number): string {
     isZh,
   );
 
-  const questionList = sorted.map((q, i) => {
-    let entry = `  ${i + 1}. [${q.type}] ${q.text} (maximum follow-ups: ${questionFollowUpLimit(ctx.followUpDepth, q)})`;
-    if (q.description) entry += `\n     Context: ${q.description}`;
-    if (q.options?.options?.length) {
-      const labels = q.options.options.map((o, j) => `${String.fromCharCode(65 + j)}) ${o}`).join(", ");
-      const multi = q.options.allowMultiple ? " (multiple choice)" : " (single choice)";
-      entry += `\n     Options${multi}: ${labels}`;
-    }
-    if (q.type === "CODING") entry += `\n     Note: The participant has a code editor. You cannot see their code unless they describe it.`;
-    if (q.type === "WHITEBOARD") entry += `\n     Note: The participant has a whiteboard. You will receive image updates silently — do NOT speak when you receive them. Only describe what you see when the participant asks you to look at it.`;
-    return entry;
-  }).join("\n");
+  const questionList = promptQuestionList(sorted, ctx.followUpDepth);
 
   const currentQ = startIdx + 1;
   if (introductionStyle(process.env.AURAL_INTERVIEW_STYLE)) return introductionPrompt({ name: ctx.aiName, title: ctx.title, objective: ctx.objective, language: ctx.language, questionList, currentQuestion: currentQ, questionCount: sorted.length });

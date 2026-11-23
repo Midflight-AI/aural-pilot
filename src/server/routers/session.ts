@@ -202,7 +202,7 @@ export const sessionRouter = router({
       }
 
       const session = sessionJson as { id: string };
-      return { sessionId: session.id, interview, isExisting: false };
+      return { sessionId: session.id, interview: { ...interview, questions: sessionJson.questionPlan?.questions ?? questions }, isExisting: false };
     }),
 
   getById: publicProcedure
@@ -225,6 +225,7 @@ export const sessionRouter = router({
         throw new TRPCError({ code: "NOT_FOUND" });
       }
 
+      if (session.questionPlan) session.interview.questions = session.questionPlan.questions;
       return session;
     }),
 

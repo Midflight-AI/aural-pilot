@@ -1,5 +1,5 @@
 import { invitationResponse, validIdempotencyKey } from "@/lib/invite-lifecycle";
-import { apiCandidateDetailsSchema } from "@/lib/api-feature-schemas";
+import { apiInviteSchema } from "@/lib/api-feature-schemas";
 import { assertInterviewProjectAccess } from "@/app/api/v1/_lib/interview-access";
 import {
     apiError,
@@ -103,7 +103,7 @@ export async function POST(
     const phone = typeof c.phone === "string" ? c.phone.trim() || null : null;
     const notes = typeof c.notes === "string" ? c.notes.trim() || null : null;
 
-    const details = apiCandidateDetailsSchema.safeParse(item);
+    const details = apiInviteSchema.safeParse(item);
     if (!details.success) return apiError("BAD_REQUEST", details.error.issues[0]!.message, 400);
     if (!name) return apiError("BAD_REQUEST", "Candidate name is required.", 400);
     const expiry = (item as Record<string, unknown>).inviteExpiresAt;
