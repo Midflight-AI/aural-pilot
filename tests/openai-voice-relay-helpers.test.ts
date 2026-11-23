@@ -2,13 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+    countsAgainstFollowUpBudget,
     followUpDepthPromptCopy,
     followUpLimitNotice,
     followUpsSpentOnQuestion,
+    promptQuestionList,
+    questionChangeOutput,
     shouldAllowTtsBargeIn,
     shouldSendFollowUpLimitNotice,
 } from "../server/openai-voice-relay-helpers";
 import { maxFollowUpsForDepth } from "../src/lib/follow-up-depth";
+import { FOLLOW_UP_POLICY } from "../src/lib/follow-up-policy";
 
 test("does not allow TTS barge-in before assistant audio has actually started", () => {
   assert.equal(
@@ -85,6 +89,29 @@ test("MODERATE budget notice fires only after the second follow-up is heard", ()
   assert.equal(decide(1), false, "asked the question, no follow-ups yet");
   assert.equal(decide(2), false, "one follow-up spent, one left");
   assert.equal(decide(3), true, "both follow-ups spent");
+});
+
+/** Responses the participant heard after a move, in order: when does the relay send the limit notice? */
+function limitNoticeAfter(responses: Array<{ movedQuestion: boolean }>, followUpBudget: number): number[] {
+  let assistantTurnsThisQuestion = 0;
+  let noticeAlreadySent = false;
+  const sentAfter: number[] = [];
+  responses.forEach(({ movedQuestion }, i) => {
+    if (!countsAgainstFollowUpBudget({ movedQuestion })) return;
+    assistantTurnsThisQuestion++;
+    if (shouldSendFollowUpLimitNotice({ assistantTurnsThisQuestion, followUpBudget, noticeAlreadySent, interviewDone: false })) {
+      noticeAlreadySent = true;
+      sentAfter.push(i);
+    }
+  });
+  return sentAfter;
+}
+
+test("the acknowledgement that moves on never spends a follow-up on the next question", () => {
+  const moveOn = { movedQuestion: true };
+  const turn = { movedQuestion: false };
+  assert.deepEqual(limitNoticeAfter([moveOn, turn, turn, turn], 2), [3], "notice only after the question and two follow-ups");
+  assert.deepEqual(limitNoticeAfter([moveOn, turn], 0), [1], "a limit of 0 sends the notice after the question, not the acknowledgement");
 });
 
 test("LIGHT tells the model to move on as soon as the question has been asked", () => {
@@ -177,4 +204,57 @@ test("the budget notice names the question and tells the model to transition", (
   assert.match(zh, /第3题/);
   assert.match(zh, /signal_question_change/);
   assert.match(zh, /不要再追问/);
+});
+
+test("a follow-up budget adds the shared answer-judging policy in both languages", () => {
+  for (const isZh of [false, true]) {
+    assert.ok(followUpDepthPromptCopy(2, isZh).rule.includes(FOLLOW_UP_POLICY), `isZh=${isZh}`);
+    assert.ok(!followUpDepthPromptCopy(0, isZh).rule.includes(FOLLOW_UP_POLICY), `isZh=${isZh}`);
+  }
+  assert.match(followUpDepthPromptCopy(2, true).rule, /^对每个问题，根据受访者的回答最多追问2次/);
+});
+
+test("with a budget the vague-answer lines defer to the policy instead of asking to probe deeper", () => {
+  const en = followUpDepthPromptCopy(2, false);
+  assert.equal(en.vagueAnswer, " For any other answer, use the follow-up rule above.");
+  assert.equal(en.briefAnswer, "");
+  const zh = followUpDepthPromptCopy(2, true);
+  assert.equal(zh.vagueAnswer, "其他回答按上面的追问规则处理。");
+  assert.equal(zh.briefAnswer, "");
+});
+
+test("a zero budget keeps the existing vague-answer lines", () => {
+  const en = followUpDepthPromptCopy(0, false);
+  assert.equal(en.vagueAnswer, " If their answer is vague, ask them to elaborate before moving on.");
+  assert.equal(en.briefAnswer, " If their answer is too brief or vague, probe deeper.");
+  const zh = followUpDepthPromptCopy(0, true);
+  assert.equal(zh.vagueAnswer, "如果回答模糊，应追问以获取更多细节。");
+  assert.equal(zh.briefAnswer, "如果回答太简短或模糊，应追问以获取更多信息。");
+});
+
+test("the question list shows a private interviewer note only when present", () => {
+  const list = promptQuestionList([
+    { text: "How do you reconcile a pay run?", type: "OPEN_ENDED", options: { maxFollowUps: 2, interviewerNote: "Names a specific check and what it caught" } },
+    { text: "Anything to add?", type: "OPEN_ENDED", description: "Optional", options: { maxFollowUps: 0 } },
+  ], "MODERATE");
+  assert.equal(list, [
+    "  1. [OPEN_ENDED] How do you reconcile a pay run? (maximum follow-ups: 2)",
+    "     Private interviewer note on what a good answer shows (never reveal, quote, paraphrase or hint at it): Names a specific check and what it caught",
+    "  2. [OPEN_ENDED] Anything to add? (maximum follow-ups: 0)",
+    "     Context: Optional",
+  ].join("\n"));
+});
+
+test("after a spoken acknowledgement the move tells the model to ask without thanking again", () => {
+  assert.equal(
+    questionChangeOutput(2, "What did you do?", true),
+    'Moved to question 2: "What did you do?". You already acknowledged their answer, so ask this question now. Do not thank them or comment on their answer again.',
+  );
+});
+
+test("a silent move keeps the existing transition wording", () => {
+  assert.equal(
+    questionChangeOutput(2, "What did you do?", false),
+    'Moved to question 2: "What did you do?". Please naturally transition and ask this question.',
+  );
 });

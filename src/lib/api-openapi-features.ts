@@ -1,4 +1,12 @@
 export const candidateFeatureProperties = {
+  followUpQuestions: { type: "array", maxItems: 5, items: { oneOf: [
+    { type: "string", minLength: 1, maxLength: 1000, description: "Asked as written, with no follow-ups." },
+    { type: "object", required: ["text"], additionalProperties: false, properties: {
+      text: { type: "string", minLength: 1, maxLength: 1000 },
+      interviewerNote: { type: "string", minLength: 1, maxLength: 1200, description: "What a good answer shows. The interviewer uses it to decide whether to follow up; the candidate never sees it." },
+      maxFollowUps: { type: "integer", minimum: 0, maximum: 2, default: 0 },
+    } },
+  ] }, description: "Private questions for this invite. Optional at creation." },
   inviteStatus: { type: "string", enum: ["active", "cancelled", "expired"] },
   inviteExpiresAt: { type: ["string", "null"], format: "date-time" },
   inviteVersion: { type: "integer", minimum: 1 },

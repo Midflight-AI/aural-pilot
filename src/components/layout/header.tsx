@@ -247,8 +247,8 @@ export function Header({ sidebarToggle }: { sidebarToggle?: React.ReactNode }) {
   }
 
   return (
-    <header className="flex h-14 items-center border-b bg-background px-4">
-      <div className="flex items-center gap-1">
+    <header className="flex min-h-14 shrink-0 items-center gap-2 border-b bg-card px-4">
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
         {sidebarToggle}
 
         {!isOrgLevelPage ? (

@@ -5,8 +5,10 @@ import { WebSocket } from 'ws';
 import { SignJWT } from 'jose';
 const [url,countArg='6',output='/private/tmp/aural-voice-benchmark.json']=process.argv.slice(2);
 const count=Number(countArg);
-const turns=Number(process.env.VOICE_BENCH_TURNS || 1);
-if(!Number.isInteger(turns)||turns<1||turns>6)throw Error("1_to_6_turns_required");
+const soakSeconds=Number(process.env.VOICE_BENCH_SOAK_SECONDS || 0);
+if(!Number.isInteger(soakSeconds)||(soakSeconds!==0&&(soakSeconds<60||soakSeconds>1200)))throw Error('soak_must_be_60_to_1200_seconds');
+const turns=soakSeconds?Math.ceil(soakSeconds/60)+1:Number(process.env.VOICE_BENCH_TURNS || 1);
+if(!Number.isInteger(turns)||turns<1||(!soakSeconds&&turns>6))throw Error('1_to_6_turns_required');
 let active=0,peakConcurrent=0;
 if(!/^wss:\/\/aural-relay(?:--[a-z0-9-]+)?\.purpleflower-a0eeeb4d\.eastus2\.azurecontainerapps\.io$/.test(url||'')||!Number.isInteger(count)||count<1||count>20)throw Error('known_relay_and_1_to_20_sessions_required');
 const candidates=process.env.VOICE_BENCH_CANDIDATES_FILE?JSON.parse(fs.readFileSync(process.env.VOICE_BENCH_CANDIDATES_FILE,'utf8')):null;
@@ -19,7 +21,7 @@ const startedAt=new Date().toISOString();
 const results=[];
 async function run(index){
  const sessionId=candidates?.[index]?.sessionId??crypto.randomUUID();
- const init={type:'init',sessionId,context:{title:'Synthetic release concurrency check',aiName:'Interviewer',aiTone:'FRIENDLY',language:'en',followUpDepth:'NONE',questions:Array.from({length:turns+1},(_,order)=>({text:order===0?'Briefly explain how you help a customer with a billing problem.':'Explain another step you would take to help the customer.',type:'TEXT',order}))}};
+ const init={type:'init',sessionId,context:{title:'Synthetic release concurrency check',aiName:'Interviewer',aiTone:'FRIENDLY',language:'en',followUpDepth:'NONE',questions:Array.from({length:turns+1},(_,order)=>({text:order===0?'Briefly explain how you help a customer with a billing problem.':`For step ${order+1}, explain another way you would investigate and resolve a customer billing issue.`,type:'TEXT',order}))}};
  let ticket;
  if(candidates){
   const response=await fetch("https://interviews.rampremote.com/api/voice/ticket",{method:"POST",headers:{"Content-Type":"application/json","x-aural-video-invite":candidates[index].inviteToken},body:JSON.stringify(init),signal:AbortSignal.timeout(15000)});
@@ -30,21 +32,23 @@ async function run(index){
  const ws=new WebSocket(url); let speechEnd=null,feeding=false,finished=false,retryTimer=null,responded=false,connected=false,phase='greeting',playbackEnd=0;
  return await new Promise(resolve=>{
   const finish=reason=>{if(finished)return;finished=true;clearTimeout(timeout);clearTimeout(retryTimer);result.outcome=reason;result.elapsedMs=Math.round(performance.now()-start);if(connected){active--;connected=false;}ws.close();const closeTimer=setTimeout(()=>ws.terminate(),5000);closeTimer.unref();console.log(JSON.stringify({index,outcome:reason,completedTurns:result.turnResponseMs.length,errors:result.errors,retries:result.retries}));resolve(result);};
-  const timeout=setTimeout(()=>finish('timeout'),Math.max(90000,turns*90000));
+  const timeout=setTimeout(()=>finish('timeout'),soakSeconds?(soakSeconds+180)*1000:Math.max(90000,turns*90000));
   ws.on('error',()=>{result.errors++;finish('connection_error');});
   ws.on('close',()=>{if(!finished)finish('closed');});
   ws.on('open',()=>{connected=true;active++;peakConcurrent=Math.max(peakConcurrent,active);ws.send(JSON.stringify({...init,ticket}));});
   ws.on('message',async(raw,binary)=>{
-   if(binary){playbackEnd=Math.max(performance.now(),playbackEnd)+raw.length/48;result.audioBytes+=raw.length;if(feeding&&speechEnd===null)result.earlyResponseBytes+=raw.length;if(result.greetingMs===null)result.greetingMs=Math.round(performance.now()-start);if(phase==='awaiting_response'&&!responded){responded=true;phase='response';clearTimeout(retryTimer);retryTimer=null;const latency=Math.round(performance.now()-speechEnd);result.turnResponseMs.push(latency);result.responseMs=latency;if(result.turnResponseMs.length===turns)finish('response_received');}return;}
+   if(binary){playbackEnd=Math.max(performance.now(),playbackEnd)+raw.length/48;result.audioBytes+=raw.length;if(feeding&&speechEnd===null)result.earlyResponseBytes+=raw.length;if(result.greetingMs===null)result.greetingMs=Math.round(performance.now()-start);if(phase==='awaiting_response'&&!responded){responded=true;phase='response';clearTimeout(retryTimer);retryTimer=null;const latency=Math.round(performance.now()-speechEnd);result.turnResponseMs.push(latency);result.responseMs=latency;if(soakSeconds)console.log(JSON.stringify({index,turn:result.turnResponseMs.length,responseMs:latency,elapsedMs:Math.round(performance.now()-start)}));if(result.turnResponseMs.length===turns)finish('response_received');}return;}
    const msg=JSON.parse(raw.toString());
    if(['ready','tts_ended','asr_ended','question_change','interview_complete','error'].includes(msg.type))result.events.push({type:msg.type,ms:Math.round(performance.now()-start),phase,questionIndex:msg.questionIndex});
    if(msg.type==='ready')result.readyMs=Math.round(performance.now()-start);
    if(msg.type==='asr')result.asrEvents++;
    if(msg.type==='asr_ended'&&msg.text&&!retryTimer){retryTimer=setTimeout(()=>{if(!finished&&!responded){result.retries++;ws.send(JSON.stringify({type:'text_input',content:msg.text,replay:true}));}},8000);}
+   if(msg.type==='interview_complete'&&result.turnResponseMs.length<turns)finish('interview_ended_early');
    if(msg.type==='error'){result.errors++;finish('relay_error');}
    if(msg.type==='tts_ended'&&['greeting','response'].includes(phase)&&!finished){
     phase='waiting_to_speak';
-    while(!finished&&performance.now()<playbackEnd+1800)await delay(Math.max(1,Math.min(500,playbackEnd+1800-performance.now())));
+    const nextTurnAt=soakSeconds?start+result.turnResponseMs.length*60000:0;
+    while(!finished&&performance.now()<Math.max(playbackEnd+1800,nextTurnAt))await delay(Math.max(1,Math.min(500,Math.max(playbackEnd+1800,nextTurnAt)-performance.now())));
     if(finished)return;
     phase='speaking';feeding=true;responded=false;speechEnd=null;clearTimeout(retryTimer);retryTimer=null;
     for(let offset=0;offset<pcm.length&&!finished;offset+=3200){ws.send(JSON.stringify({type:'audio',data:pcm.subarray(offset,offset+3200).toString('hex')}));await delay(100);}
@@ -55,6 +59,6 @@ async function run(index){
  });
 }
 await Promise.all(Array.from({length:count},(_,i)=>run(i).catch(()=>{results.push({index:i,outcome:'setup_failed',errors:1,retries:0,turnResponseMs:[]});})));
-fs.writeFileSync(output,JSON.stringify({url,count,turns,startedAt,completedAt:new Date().toISOString(),peakConcurrent,fixtureSeconds:pcm.length/32000,results},null,2),{mode:0o600});
-console.log(JSON.stringify({output,count,turns,peakConcurrent,results}));
+fs.writeFileSync(output,JSON.stringify({url,count,turns,soakSeconds,startedAt,completedAt:new Date().toISOString(),peakConcurrent,fixtureSeconds:pcm.length/32000,results},null,2),{mode:0o600});
+console.log(JSON.stringify({output,count,turns,soakSeconds,peakConcurrent,results}));
 if(results.some(r=>r.outcome!=='response_received'||r.errors))process.exitCode=1;

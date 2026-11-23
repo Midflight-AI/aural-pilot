@@ -5,6 +5,7 @@ export const initialQuestionSchema = z.array(z.object({
  text: z.string().trim().min(1).max(2000),
  isRequired: z.boolean().optional(),
  maxFollowUps: z.number().int().min(0).max(2).optional(),
+ interviewerNote: z.string().trim().min(1).max(1200).optional(),
 }).strict()).max(100);
 
 export function selectInterviewProject(value: unknown, accessible: string[]): string | null {

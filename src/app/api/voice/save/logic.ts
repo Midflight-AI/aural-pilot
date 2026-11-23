@@ -220,8 +220,15 @@ export async function handleVoiceSave(
   }
 }
 
+export type SessionQuestion = { id: string; order: number };
+
+/** The session's questions in the relay's order, so a capture-time position maps to the same question. */
+export function sessionQuestionOrder<Q extends SessionQuestion>(questions: Q[]): Q[] {
+  return [...questions].sort((a, b) => a.order - b.order);
+}
+
 /** Resolve capture-time positions against this session's questions, never another interview. */
-export function resolveVoiceQuestionId(message: {questionIndex?: number; questionId?: string}, questions: Array<{id:string}>): string | null {
- if (Number.isInteger(message.questionIndex) && message.questionIndex! >= 0) return questions[message.questionIndex!]?.id ?? null;
- return questions.some(q=>q.id===message.questionId) ? message.questionId! : null;
+export function resolveVoiceQuestionId(message: { questionIndex?: number; questionId?: string }, questions: Array<{ id: string }>): string | null {
+  if (Number.isInteger(message.questionIndex) && message.questionIndex! >= 0) return questions[message.questionIndex!]?.id ?? null;
+  return questions.some(q => q.id === message.questionId) ? message.questionId! : null;
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import Image from "next/image";
+import { RampWordmark } from "@/components/brand/ramp";
 import { useTourSafe } from "./tour-provider";
 
 export function TourWelcome() {
@@ -20,29 +20,18 @@ export function TourWelcome() {
         onClick={tour.dismissWelcome}
       />
 
-      <div className="tour-tooltip-enter relative w-full max-w-md rounded-2xl bg-white shadow-2xl border border-border/30 overflow-hidden">
-        {/* Illustration header */}
-        <div className="relative bg-gradient-to-br from-primary/10 via-primary/5 to-orange-50 px-6 pt-6 pb-0">
-          <Image
-            src="/images/marketing/hero-screenshots-sm.webp"
-            alt="Aural platform preview"
-            width={800}
-            height={450}
-            className="w-full h-auto rounded-t-lg"
-            priority
-          />
-          <div className="absolute -bottom-px left-0 right-0 h-6 bg-gradient-to-t from-white to-transparent" />
-        </div>
+      <div className="tour-tooltip-enter relative w-full max-w-md rounded-2xl bg-card shadow-2xl overflow-hidden">
+        <div className="flex justify-center bg-[#334be8] px-6 py-8"><RampWordmark reversed /></div>
 
         {/* Content */}
-        <div className="px-8 pb-8 pt-2 text-center space-y-3">
-          <h2 className="text-xl font-bold text-gray-900">
-            Welcome to Aural!
+        <div className="px-8 pb-8 pt-6 text-center space-y-3">
+          <h2 className="text-xl font-bold text-foreground">
+            Welcome to Ramp Remote!
           </h2>
-          <p className="text-[15px] font-medium text-gray-700">
+          <p className="text-[15px] font-medium text-foreground">
             Explore each section with this quick guided tour.
           </p>
-          <p className="text-sm text-gray-500 leading-relaxed">
+          <p className="text-sm text-muted-foreground leading-relaxed">
             We&apos;ll walk you through creating your first AI-powered interview,
             adding candidates, and sharing invite links — everything you need to
             get started.
@@ -51,7 +40,7 @@ export function TourWelcome() {
           <div className="flex items-center justify-center gap-4 pt-4">
             <button
               onClick={tour.dismissWelcome}
-              className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               Remind me next time
             </button>

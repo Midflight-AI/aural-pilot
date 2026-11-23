@@ -6,7 +6,7 @@ import { TourCelebration } from "@/components/tour/tour-celebration";
 import { TourOverlay } from "@/components/tour/tour-overlay";
 import { TourProvider } from "@/components/tour/tour-provider";
 import { TourWelcome } from "@/components/tour/tour-welcome";
-import { AuralLogo } from "@/components/ui/aural-logo";
+import { RampAdaptiveWordmark } from "@/components/brand/ramp";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { Header } from "./header";
@@ -69,6 +70,8 @@ function ThemeToggle() {
         {options.map((opt) => (
           <button
             key={opt.value}
+            aria-label={opt.label}
+            aria-pressed={theme === opt.value}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -156,6 +159,9 @@ function SidebarLink({
   return (
     <Link
       href={href}
+      aria-label={label}
+      title={collapsed ? label : undefined}
+      aria-current={active ? "page" : undefined}
       onClick={(e) => {
         if (active) return;
         e.preventDefault();
@@ -233,19 +239,14 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "flex flex-col border-r bg-background transition-all duration-200",
+        "ramp-sidebar shrink-0 flex flex-col border-r bg-card transition-all duration-200",
         collapsed ? "w-16" : "w-52",
       )}
     >
       {/* Logo */}
       <div className="flex h-14 items-center border-b px-4">
-        <Link href="/organizations" className="flex items-center gap-1">
-          <AuralLogo size={28} className="shrink-0" />
-          {!collapsed && (
-            <span className="font-heading text-base font-bold tracking-[2px]">
-              AURAL
-            </span>
-          )}
+        <Link href="/organizations" aria-label="Ramp Remote interviews" className="flex items-center gap-1">
+          {collapsed ? <Image src="/brand/ramp-remote/mark.svg" width={32} height={32} alt="" /> : <RampAdaptiveWordmark />}
         </Link>
       </div>
 
@@ -265,6 +266,7 @@ export function Sidebar({
           {/* Bottom section: Support */}
           <div className="space-y-1 px-3 pb-2">
             <button
+              aria-label={t("sidebar.support")}
               onClick={() => setSupportOpen(true)}
               className={cn(
                 "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
@@ -293,6 +295,7 @@ export function Sidebar({
                 collapsed ? "justify-center" : "justify-start",
               )}
               size={collapsed ? "icon" : "default"}
+              aria-label={t("sidebar.newInterview")}
               disabled={creatingInterview}
               onClick={() => {
                 if (pathname === "/interviews/new") return;
@@ -333,6 +336,7 @@ export function Sidebar({
               collapsed={collapsed}
             />
             <button
+              aria-label={t("sidebar.support")}
               onClick={() => setSupportOpen(true)}
               className={cn(
                 "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
@@ -482,14 +486,22 @@ export function SidebarToggle({
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
 
+  useEffect(() => {
+    const compact = window.matchMedia("(max-width: 767px)");
+    const sync = () => setCollapsed(compact.matches);
+    sync();
+    compact.addEventListener("change", sync);
+    return () => compact.removeEventListener("change", sync);
+  }, []);
+
   return (
     <TourProvider>
-      <div className="dashboard-shell flex h-screen overflow-hidden">
+      <div className="dashboard-shell flex h-dvh overflow-hidden">
         <Sidebar
           collapsed={collapsed}
           onToggle={() => setCollapsed(!collapsed)}
           />
-          <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             <Header
               sidebarToggle={
                 <SidebarToggle
@@ -498,7 +510,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 />
               }
             />
-            <main className="flex-1 overflow-y-auto p-6 code-scrollbar">
+            <main className="flex-1 overflow-y-auto p-4 sm:p-6 code-scrollbar">
               {children}
             </main>
           </div>

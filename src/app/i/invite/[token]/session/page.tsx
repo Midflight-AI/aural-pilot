@@ -117,6 +117,7 @@ export default function InviteSessionPage() {
       followUpDepth: interview.followUpDepth,
       startQuestionIndex: resume.hasQuestion ? resume.questionIndex : undefined,
       questions: interview.questions.map((q: any) => ({
+        id: q.id,
         text: q.text,
         type: q.type,
         description: q.description,

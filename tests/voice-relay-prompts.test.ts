@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { PROMPTS, type ResponsePromptParams } from "../server/voice-relay-prompts";
+import { FOLLOW_UP_POLICY } from "../src/lib/follow-up-policy";
 
 function basePromptParams(overrides: Partial<ResponsePromptParams> = {}): ResponsePromptParams {
   return {
@@ -164,4 +165,33 @@ test("normal response prompt defaults to moving on after a direct answer", () =>
   assert.match(prompt, /如果已经正面回答了你刚才的问题/);
   assert.match(prompt, /默认应简短确认并进入下一题/);
   assert.match(prompt, /只有当关键信息仍明显缺失时/);
+});
+
+test("a private interviewer note follows the current question only when present", () => {
+  const note = "Names a specific check and what it caught";
+  const withNote = PROMPTS.response.normal(basePromptParams({ qText: "How do you reconcile a pay run?", qNote: note }));
+  for (const prompt of [withNote.en, withNote.zh]) {
+    assert.match(prompt, /How do you reconcile a pay run\?.*\nPrivate interviewer note .*never reveal.*: Names a specific check and what it caught\n/);
+  }
+  const withoutNote = PROMPTS.response.normal(basePromptParams());
+  assert.doesNotMatch(withoutNote.en + withoutNote.zh, /Private interviewer note/);
+});
+
+test("follow-up budget lines carry the shared answer-judging policy except on RESEARCH questions", () => {
+  const ctx = { isLastQuestion: false };
+  for (const instruction of [PROMPTS.followUp.oneLeft("[NEXT]", ctx), PROMPTS.followUp.remaining(2, "[NEXT]", ctx)]) {
+    assert.ok(instruction.en.includes(FOLLOW_UP_POLICY));
+    assert.ok(instruction.zh.includes(FOLLOW_UP_POLICY));
+  }
+  const research = { isLastQuestion: false, isResearch: true };
+  for (const instruction of [PROMPTS.followUp.oneLeft("[NEXT]", research), PROMPTS.followUp.remaining(2, "[NEXT]", research)]) {
+    assert.ok(!(instruction.en + instruction.zh).includes(FOLLOW_UP_POLICY));
+  }
+  const judged = PROMPTS.followUp.remaining(2, "[NEXT]", ctx);
+  assert.doesNotMatch(judged.en, /probe further|already thorough/);
+  assert.match(judged.en, /When the answer is complete, acknowledge it and append \[NEXT\]\./);
+  assert.doesNotMatch(judged.zh, /根据回答内容决定是否需要追问/);
+  assert.match(PROMPTS.followUp.remaining(2, "[NEXT]", research).en, /whether to probe further/);
+  const atLimit = PROMPTS.followUp.atLimit("[NEXT]", ctx);
+  assert.ok(!(atLimit.en + atLimit.zh).includes(FOLLOW_UP_POLICY), "a limit of 0 keeps the existing copy");
 });

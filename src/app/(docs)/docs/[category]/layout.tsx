@@ -24,12 +24,12 @@ export default function CategoryLayout({
 
           <footer className="border-t border-mk-border/60 px-8 lg:px-16 py-5">
             <div className="max-w-3xl flex items-center justify-between text-xs text-mk-text-muted">
-              <span>&copy; {new Date().getFullYear()} Aural. All rights reserved.</span>
+              <span>&copy; {new Date().getFullYear()} Ramp Remote. All rights reserved.</span>
               <Link
                 href="/"
                 className="hover:text-mk-terracotta transition-colors"
               >
-                aural-ai.com
+                interviews.rampremote.com
               </Link>
             </div>
           </footer>

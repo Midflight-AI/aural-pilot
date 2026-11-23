@@ -5,9 +5,9 @@ import { categories, getCategoryArticles } from "@/content/docs";
 import Link from "next/link";
 
 export const metadata = {
-  title: "Docs | Aural",
+  title: "Help centre",
   description:
-    "Learn how to use Aural — guides for interview creators and interviewees.",
+    "Learn how to use Ramp Remote — guides for interview creators and interviewees.",
 };
 
 export default function DocsHomePage() {
@@ -15,15 +15,12 @@ export default function DocsHomePage() {
     <>
       <DocsHeader />
 
-      <div className="bg-mk-dark py-16 px-8 lg:px-[120px]">
+      <div className="bg-[#334be8] text-white py-16 px-8 lg:px-[120px]">
         <div className="max-w-[1440px] mx-auto text-center space-y-6">
-          <span className="block font-heading text-[11px] font-semibold tracking-[2px] text-mk-terracotta">
-            DOCUMENTATION
-          </span>
-          <h1 className="font-heading text-3xl md:text-5xl font-bold text-mk-text-light leading-tight">
+          <h1 className="font-heading text-3xl md:text-5xl font-bold text-white leading-tight">
             How can we help?
           </h1>
-          <p className="text-lg text-mk-text-muted max-w-2xl mx-auto">
+          <p className="text-lg text-white/90 max-w-2xl mx-auto">
             Guides and answers for interview creators and interviewees.
           </p>
           <div className="pt-2">
@@ -46,9 +43,9 @@ export default function DocsHomePage() {
 
       <footer className="border-t border-mk-border/60 px-8 py-5">
         <div className="max-w-5xl mx-auto flex items-center justify-between text-xs text-mk-text-muted">
-          <span>&copy; {new Date().getFullYear()} Aural. All rights reserved.</span>
+          <span>&copy; {new Date().getFullYear()} Ramp Remote. All rights reserved.</span>
           <Link href="/" className="hover:text-mk-terracotta transition-colors">
-            aural-ai.com
+            interviews.rampremote.com
           </Link>
         </div>
       </footer>

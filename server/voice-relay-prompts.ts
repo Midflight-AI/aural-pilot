@@ -17,6 +17,7 @@ import {
   ROLE_LABELS,
   SCREEN_PROMPT,
 } from "../src/lib/i18n";
+import { FOLLOW_UP_POLICY, interviewerNoteLine } from "../src/lib/follow-up-policy";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -27,6 +28,7 @@ export interface ResponsePromptParams {
   totalQs: number;
   qText: string;
   qDescription?: string | null;
+  qNote?: string | null;
   qType: string;
   choiceInstruction: string;
   history: string;
@@ -51,6 +53,8 @@ export interface ResponsePromptParams {
 /** For follow-up budget lines: mid-interview vs last question use different closing language */
 export interface FollowUpBudgetContext {
   isLastQuestion: boolean;
+  /** RESEARCH questions probe for as much detail as possible, so answers are not judged for sufficiency. */
+  isResearch?: boolean;
 }
 
 /**
@@ -68,6 +72,10 @@ function noNextQuestionSuffix(ctx: FollowUpBudgetContext): BiText {
     zh: `（注意：这是最后一道题，收尾时不要说"进入下一题"或"下一部分"。）`,
     en: ` (Note: this is the last question — when you close it, do not say you are moving on to the next question or the next part.)`,
   };
+}
+
+function answerPolicySuffix(ctx: FollowUpBudgetContext): string {
+  return ctx.isResearch ? "" : `\n${FOLLOW_UP_POLICY}`;
 }
 
 export function lastQuestionNotice(p: ResponsePromptParams): BiText {
@@ -314,16 +322,27 @@ Important: when you are asking the participant to explain their approach (catego
     },
     oneLeft(nextToken: string, ctx: FollowUpBudgetContext): BiText {
       const noNext = noNextQuestionSuffix(ctx);
+      const policy = answerPolicySuffix(ctx);
       return {
-        zh: `你最多还能追问1次。只有在对方确实是在回答当前问题时才应用这个追问预算；如果他们是在和你交流或问你问题，先自然回应。如果回答已经充分和清晰，简短感谢并在末尾加上 ${nextToken}。否则可以追问一个相关细节。${noNext.zh}`,
-        en: `You have at most 1 follow-up left. Apply this follow-up budget only when the participant is actually answering the current question; if they are talking to you or asking a question, respond naturally first. If the answer is already sufficient, briefly acknowledge and append ${nextToken}. Otherwise ask one focused follow-up.${noNext.en}`,
+        zh: `你最多还能追问1次。只有在对方确实是在回答当前问题时才应用这个追问预算；如果他们是在和你交流或问你问题，先自然回应。如果回答已经充分和清晰，简短感谢并在末尾加上 ${nextToken}。否则可以追问一个相关细节。${noNext.zh}${policy}`,
+        en: `You have at most 1 follow-up left. Apply this follow-up budget only when the participant is actually answering the current question; if they are talking to you or asking a question, respond naturally first. If the answer is already sufficient, briefly acknowledge and append ${nextToken}. Otherwise ask one focused follow-up.${noNext.en}${policy}`,
       };
     },
     remaining(turnsLeft: number, nextToken: string, ctx: FollowUpBudgetContext): BiText {
       const noNext = noNextQuestionSuffix(ctx);
+      const policy = answerPolicySuffix(ctx);
+      const decide = ctx.isResearch
+        ? {
+            zh: `根据回答内容决定是否需要追问。如果回答已经充分完整，可以简短感谢并在末尾加上 ${nextToken}。`,
+            en: `Decide based on the answer content whether to probe further. If the answer is already thorough, acknowledge and append ${nextToken}.`,
+          }
+        : {
+            zh: `回答完整时，简短确认并在末尾加上 ${nextToken}。`,
+            en: `When the answer is complete, acknowledge it and append ${nextToken}.`,
+          };
       return {
-        zh: `你还可以追问最多${turnsLeft}次。只有在对方确实是在回答当前问题时才应用这个追问预算；如果他们是在和你交流或问你问题，先自然回应。根据回答内容决定是否需要追问。如果回答已经充分完整，可以简短感谢并在末尾加上 ${nextToken}。${noNext.zh}`,
-        en: `You have up to ${turnsLeft} follow-ups remaining. Apply this follow-up budget only when the participant is actually answering the current question; if they are talking to you or asking a question, respond naturally first. Decide based on the answer content whether to probe further. If the answer is already thorough, acknowledge and append ${nextToken}.${noNext.en}`,
+        zh: `你还可以追问最多${turnsLeft}次。只有在对方确实是在回答当前问题时才应用这个追问预算；如果他们是在和你交流或问你问题，先自然回应。${decide.zh}${noNext.zh}${policy}`,
+        en: `You have up to ${turnsLeft} follow-ups remaining. Apply this follow-up budget only when the participant is actually answering the current question; if they are talking to you or asking a question, respond naturally first. ${decide.en}${noNext.en}${policy}`,
       };
     },
     /** The participant asked to skip; phrasing depends on whether anything follows. */
@@ -454,8 +473,9 @@ Rules:
     },
 
     normal(p: ResponsePromptParams): BiText {
-      const descZh = p.qDescription ? `\n问题补充说明：${p.qDescription}` : "";
-      const descEn = p.qDescription ? `\nAdditional context: ${p.qDescription}` : "";
+      const note = p.qNote ? `\n${interviewerNoteLine(p.qNote)}` : "";
+      const descZh = (p.qDescription ? `\n问题补充说明：${p.qDescription}` : "") + note;
+      const descEn = (p.qDescription ? `\nAdditional context: ${p.qDescription}` : "") + note;
       const memZh = p.previousContext ? `\n之前的讨论（仅供参考，不要重复这些话题）：\n${p.previousContext}\n` : "";
       const memEn = p.previousContext ? `\nPrevious discussion (for context only — do NOT re-ask these topics):\n${p.previousContext}\n` : "";
       const recentZh = p.recentInterviewerResponses?.length

@@ -40,7 +40,7 @@ export function CategoryCard({
   return (
     <Link
       href={`/docs/${category.slug}`}
-      className="group flex flex-col bg-white border border-mk-border rounded-lg p-6 hover:border-mk-terracotta/50 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 h-full"
+      className="group flex flex-col bg-card border border-mk-border rounded-lg p-6 hover:border-mk-terracotta/50 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 h-full"
     >
       <div className="w-11 h-11 bg-mk-terracotta/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-mk-terracotta/20 transition-colors duration-300">
         <Icon size={20} className="text-mk-terracotta" />

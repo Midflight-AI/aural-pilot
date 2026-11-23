@@ -432,3 +432,12 @@ test('capture-time question positions survive later transitions and cannot refer
  assert.equal(resolveVoiceQuestionId({questionId:'foreign'},questions),null);
  assert.equal(resolveVoiceQuestionId({},questions),null);
 });
+
+test('capture-time positions resolve against the session plan, including invite-only questions',async()=>{
+ const {resolveVoiceQuestionId,sessionQuestionOrder}=await import('@/app/api/voice/save/logic');
+ // Invite questions exist only in the session plan; they are appended after the shared questions.
+ const plan=sessionQuestionOrder([{id:'invite-cv',order:2},{id:'team',order:0},{id:'contribution',order:1}]);
+ assert.deepEqual(plan.map(q=>q.id),['team','contribution','invite-cv']);
+ assert.equal(resolveVoiceQuestionId({questionIndex:2,questionId:'invite-cv'},plan),'invite-cv');
+ assert.equal(resolveVoiceQuestionId({questionId:'invite-cv'},plan),'invite-cv');
+});

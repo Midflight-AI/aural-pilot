@@ -469,6 +469,8 @@ export const candidateRouter = router({
       if (invitationUnavailable(candidate)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "This invitation has expired or been cancelled. Ask for a new link." });
       }
+      const session = candidate.session;
+      if (session?.questionPlan) interview.questions = session.questionPlan.questions;
       return candidate;
     }),
 });
