@@ -146,7 +146,11 @@ test("REST feature contracts: authorization, ownership, previews, completion and
       const response = await createCandidates(req({ name: "Candidate", school: "Example" }), params);
       assert.equal(response.status, 200);
       assert.match((await response.json()).data[0].inviteUrl, /\/i\/invite\/personal%20token$/);
+      const followUpQuestions = ["Which payroll system did you use?", { text: "How did you fix a missed super payment?", interviewerNote: "Explains the fix and the outcome", maxFollowUps: 2 }];
+      assert.equal((await createCandidates(req({ name: "Candidate", followUpQuestions }), params)).status, 200);
+      assert.deepEqual((writes.at(-1)!.body as Record<string, unknown>[])[0].followUpQuestions, followUpQuestions);
       const before = writes.length;
+      assert.equal((await createCandidates(req({ name: "Candidate", followUpQuestions: [{ text: "Question", maxFollowUps: 3 }] }), params)).status, 400);
       assert.equal((await updateQuestion(req({ timeLimitSeconds: -1 }), params)).status, 400);
       role = "VIEWER";
       assert.equal((await candidate(req({ school: "Denied" }), params)).status, 403);
