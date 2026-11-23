@@ -124,13 +124,21 @@ test("a private interviewer note is listed under its question only when present"
 test("a follow-up budget brings in the shared answer-judging policy", () => {
   const prompt = promptForQuestions("LIGHT", [{ text: "How do you reconcile a pay run?", options: { maxFollowUps: 2 } }]);
   assert.ok(prompt.includes(FOLLOW_UP_POLICY));
-  assert.match(prompt, /Do not ask a follow-up only because the limit allows one/);
+  assert.match(prompt, /the follow-up limit is a maximum, not a target/);
   assert.match(prompt, /If the answer needs a follow-up and the follow-up budget/);
+});
+
+test("with a follow-up budget, nothing but the policy tells the model when to probe", () => {
+  const prompt = promptForQuestions("MODERATE", [{ text: "How do you reconcile a pay run?", options: { maxFollowUps: 2 } }]);
+  assert.match(prompt, /3\. Ask a follow-up only when the follow-up rule below calls for one\n/);
+  assert.match(prompt, /- Ask at most 2 follow-ups per scripted question\n/);
+  assert.doesNotMatch(prompt, /questions to dig deeper|key thread unexplored/);
 });
 
 test("a limit of 0 keeps the no-follow-up copy without the policy", () => {
   const prompt = promptForQuestions("LIGHT", [{ text: "Anything to add?", options: { maxFollowUps: 0, interviewerNote: "Anything relevant" } }]);
   assert.match(prompt, /Ask only the scripted questions/);
+  assert.match(prompt, /3\. Ask intelligent follow-up questions to dig deeper\n/);
   assert.ok(!prompt.includes(FOLLOW_UP_POLICY));
   assert.match(prompt, /Private interviewer note/);
 });
