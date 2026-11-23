@@ -89,6 +89,30 @@ export function followUpsSpentOnQuestion(
   return Math.max(0, assistantTurnsThisQuestion - 1);
 }
 
+/**
+ * Whether a response the participant heard is a turn on the current question.
+ *
+ * A response that calls signal_question_change acknowledges the previous answer, and
+ * the move resets the count before that response finishes: counting it would spend one
+ * of the new question's follow-ups before the question is even asked.
+ */
+export function countsAgainstFollowUpBudget({ movedQuestion }: { movedQuestion: boolean }): boolean {
+  return !movedQuestion;
+}
+
+/**
+ * The function_call_output for a move to another question.
+ *
+ * The prompt asks for an acknowledgement before each new question, so a model that
+ * already spoke one alongside the call thanks the participant twice unless told it is done.
+ */
+export function questionChangeOutput(questionNumber: number, questionText: string, acknowledged: boolean): string {
+  const moved = `Moved to question ${questionNumber}: "${questionText}".`;
+  return acknowledged
+    ? `${moved} You already acknowledged their answer, so ask this question now. Do not thank them or comment on their answer again.`
+    : `${moved} Please naturally transition and ask this question.`;
+}
+
 export interface FollowUpLimitNoticeInput {
   assistantTurnsThisQuestion: number;
   followUpBudget: number;

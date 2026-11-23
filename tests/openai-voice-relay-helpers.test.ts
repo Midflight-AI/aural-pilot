@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+    countsAgainstFollowUpBudget,
     followUpDepthPromptCopy,
     followUpLimitNotice,
     followUpsSpentOnQuestion,
     promptQuestionList,
+    questionChangeOutput,
     shouldAllowTtsBargeIn,
     shouldSendFollowUpLimitNotice,
 } from "../server/openai-voice-relay-helpers";
@@ -87,6 +89,29 @@ test("MODERATE budget notice fires only after the second follow-up is heard", ()
   assert.equal(decide(1), false, "asked the question, no follow-ups yet");
   assert.equal(decide(2), false, "one follow-up spent, one left");
   assert.equal(decide(3), true, "both follow-ups spent");
+});
+
+/** Responses the participant heard after a move, in order: when does the relay send the limit notice? */
+function limitNoticeAfter(responses: Array<{ movedQuestion: boolean }>, followUpBudget: number): number[] {
+  let assistantTurnsThisQuestion = 0;
+  let noticeAlreadySent = false;
+  const sentAfter: number[] = [];
+  responses.forEach(({ movedQuestion }, i) => {
+    if (!countsAgainstFollowUpBudget({ movedQuestion })) return;
+    assistantTurnsThisQuestion++;
+    if (shouldSendFollowUpLimitNotice({ assistantTurnsThisQuestion, followUpBudget, noticeAlreadySent, interviewDone: false })) {
+      noticeAlreadySent = true;
+      sentAfter.push(i);
+    }
+  });
+  return sentAfter;
+}
+
+test("the acknowledgement that moves on never spends a follow-up on the next question", () => {
+  const moveOn = { movedQuestion: true };
+  const turn = { movedQuestion: false };
+  assert.deepEqual(limitNoticeAfter([moveOn, turn, turn, turn], 2), [3], "notice only after the question and two follow-ups");
+  assert.deepEqual(limitNoticeAfter([moveOn, turn], 0), [1], "a limit of 0 sends the notice after the question, not the acknowledgement");
 });
 
 test("LIGHT tells the model to move on as soon as the question has been asked", () => {
@@ -218,4 +243,18 @@ test("the question list shows a private interviewer note only when present", () 
     "  2. [OPEN_ENDED] Anything to add? (maximum follow-ups: 0)",
     "     Context: Optional",
   ].join("\n"));
+});
+
+test("after a spoken acknowledgement the move tells the model to ask without thanking again", () => {
+  assert.equal(
+    questionChangeOutput(2, "What did you do?", true),
+    'Moved to question 2: "What did you do?". You already acknowledged their answer, so ask this question now. Do not thank them or comment on their answer again.',
+  );
+});
+
+test("a silent move keeps the existing transition wording", () => {
+  assert.equal(
+    questionChangeOutput(2, "What did you do?", false),
+    'Moved to question 2: "What did you do?". Please naturally transition and ask this question.',
+  );
 });

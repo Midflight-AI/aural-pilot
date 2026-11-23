@@ -20,11 +20,13 @@ import { createLogger } from "../src/lib/logger";
 import {
   DEFAULT_TTS_BARGE_IN_MIN_AUDIO_BYTES,
   DEFAULT_TTS_BARGE_IN_MIN_AUDIO_MS,
+  countsAgainstFollowUpBudget,
   followUpDepthPromptCopy,
   followUpLimitNotice,
   followUpsSpentOnQuestion,
   type PromptQuestion,
   promptQuestionList,
+  questionChangeOutput,
   shouldAllowTtsBargeIn,
   shouldSendFollowUpLimitNotice,
 } from "./openai-voice-relay-helpers";
@@ -740,8 +742,9 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
   let pendingInputFlush: ReturnType<typeof setTimeout> | null = null;
   let pendingAsrUpdate: ReturnType<typeof setTimeout> | null = null;
 
-  // Track pending function calls that need responses
-  let pendingFunctionCalls: Array<{ callId: string; name: string; args: string }> = [];
+  // Track pending function calls that need responses; a move's output depends on what the response said.
+  let pendingFunctionCalls: Array<{ callId: string; name: string; args: string | ((acknowledged: boolean) => string) }> = [];
+  let questionMovedThisResponse = false;
 
   function flushUserInput() {
     if (vadSpeechActive) return;
@@ -1640,12 +1643,9 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
 
               clearPendingTransition();
 
-              let result: string;
-              if (newIdx >= sortedQuestions.length) {
-                result = "Interview is now complete. Please give a brief farewell.";
-              } else {
-                result = `Moved to question ${newIdx + 1}: "${sortedQuestions[newIdx]?.text}". Please naturally transition and ask this question.`;
-              }
+              const result = newIdx >= sortedQuestions.length
+                ? "Interview is now complete. Please give a brief farewell."
+                : (acknowledged: boolean) => questionChangeOutput(newIdx + 1, sortedQuestions[newIdx]?.text, acknowledged);
 
               if (newIdx >= sortedQuestions.length) {
                 if (!interviewDone) {
@@ -1667,6 +1667,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
                 userCommittedWordsThisQuestion = 0;
                 assistantTurnsThisQuestion = 0;
                 followUpLimitNoticeSent = false;
+                questionMovedThisResponse = true;
                 disableTools();
                 send({
                   type: "question_change",
@@ -1703,6 +1704,8 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
             const respOutputCount = msg.response?.output?.length ?? 0;
             responseInFlight = false;
             const queuedResponse = takeQueuedAssistantResponse();
+            const movedQuestion = questionMovedThisResponse;
+            questionMovedThisResponse = false;
 
             // Flush pending ASR debounce
             if (pendingAsrUpdate) {
@@ -1716,6 +1719,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
             const hadTts = !!(outputTranscriptBuffer || modelIsSpeaking);
             const capturedModelText = outputTranscriptBuffer;
             const completedFarewellTurn = pendingInterviewComplete && hadTts && responseTtsBytes > 0;
+            const acknowledged = hadTts && responseTtsBytes > 0;
             outputTranscriptBuffer = "";
             modelIsSpeaking = false;
             const inferredFarewell =
@@ -1740,7 +1744,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
               if (capturedModelText) {
                 log.info(`TTS done (${responseTtsBytes}B sent): ${JSON.stringify(capturedModelText)}`);
                 pushHistory("assistant", capturedModelText);
-                noteAssistantTurnAgainstFollowUpBudget();
+                if (countsAgainstFollowUpBudget({ movedQuestion })) noteAssistantTurnAgainstFollowUpBudget();
               }
               send({ type: "tts_ended" });
             } else if (hadTts) {
@@ -1785,7 +1789,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
                   item: {
                     type: "function_call_output",
                     call_id: fc.callId,
-                    output: fc.args,
+                    output: typeof fc.args === "string" ? fc.args : fc.args(acknowledged),
                   },
                 }));
               }
@@ -1829,6 +1833,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       }
       modelIsSpeaking = false;
       pendingFunctionCalls = [];
+      questionMovedThisResponse = false;
 
       send({ type: "session_reconnecting" });
 
