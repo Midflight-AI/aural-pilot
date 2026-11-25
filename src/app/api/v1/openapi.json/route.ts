@@ -779,6 +779,7 @@ To run an interview: 1. Create interview (\`POST /interviews\`), 2. Add question
             "x-llm-hint": "Omit for no time limit (null in storage).",
           },
           antiCheatingEnabled: { type: "boolean", default: false },
+          opening: { type: "string", maxLength: 600, description: "What the voice interviewer says first, before the questions; it then waits for the reply. Merge fields: {{first_name}}, {{role}}, {{interviewer}}, {{question_count}}. Omit for the built-in greeting.", example: "Hi {{first_name}}, I'm {{interviewer}}. Before we start, tell me a bit about yourself." },
         },
         additionalProperties: false,
       },

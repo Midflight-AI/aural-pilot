@@ -1,5 +1,6 @@
 import { initialQuestionSchema, selectInterviewProject } from "@/lib/personalised-interview-contract";
 import { validIdempotencyKey } from "@/lib/invite-lifecycle";
+import { OPENING_MAX_LENGTH } from "@/lib/interview-opening";
 import {
   apiError,
   isAuthError,
@@ -132,6 +133,14 @@ export async function POST(request: Request) {
   const language = typeof body.language === "string" && body.language.trim() ? body.language.trim() : "en";
   const antiCheatingEnabled = typeof body.antiCheatingEnabled === "boolean" ? body.antiCheatingEnabled : false;
 
+  let opening: string | undefined;
+  if (body.opening !== undefined && body.opening !== null) {
+    if (typeof body.opening !== "string" || body.opening.trim().length > OPENING_MAX_LENGTH) {
+      return apiError("BAD_REQUEST", `opening must be text of at most ${OPENING_MAX_LENGTH} characters.`, 400);
+    }
+    opening = body.opening.trim() || undefined;
+  }
+
   let timeLimitMinutes: number | null = null;
   if (body.timeLimitMinutes !== undefined && body.timeLimitMinutes !== null) {
     if (typeof body.timeLimitMinutes !== "number" || !Number.isInteger(body.timeLimitMinutes) || body.timeLimitMinutes < 1) {
@@ -154,6 +163,7 @@ export async function POST(request: Request) {
     language,
     timeLimitMinutes,
     antiCheatingEnabled,
+    opening,
     projectId,
     userId: auth.userId,
     requireInvite: true,
