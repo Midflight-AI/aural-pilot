@@ -77,3 +77,10 @@ test("only core turns reach the scorer and private answers remain supporting evi
   assert.deepEqual(evidence.turns, [turns[0]]);
   assert.deepEqual(evidence.supporting, ["Supporting evidence — Explain your Xero reconciliation\nApplicant: I used the Xero clearing account."]);
 });
+
+import { hasCandidateAnswers } from "../src/lib/report-evidence";
+test("a session where the candidate never answered gets no generated report", () => {
+  assert.equal(hasCandidateAnswers([{ role: "ASSISTANT", content: "Here is the first question." }]), false);
+  assert.equal(hasCandidateAnswers([{ role: "USER", content: "   " }]), false);
+  assert.equal(hasCandidateAnswers([{ role: "USER", content: "I edit in Premiere." }]), true);
+});

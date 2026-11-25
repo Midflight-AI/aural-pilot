@@ -1,4 +1,5 @@
-import { reportEvidence } from "@/lib/report-evidence";
+import { hasCandidateAnswers, reportEvidence } from "@/lib/report-evidence";
+import { saveNoAnswersReport } from "@/lib/no-answers-report";
 import { svgDataUrlToPng } from "@/lib/ai/convert-svg";
 import { extractJson } from "@/lib/ai/extract-json";
 import { buildSummaryPrompt } from "@/lib/ai/prompts/summary";
@@ -161,6 +162,10 @@ async function generateSummary(
       return;
     }
 
+    if (!hasCandidateAnswers(allMessages)) {
+      await saveNoAnswersReport(sessionId);
+      return;
+    }
     const evidence = reportEvidence(questions ?? [], allMessages);
     const whiteboardDrawingsRaw = evidence.turns
       .filter((m) => m.contentType === "WHITEBOARD" && m.whiteboardData)
