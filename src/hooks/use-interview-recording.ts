@@ -1,6 +1,7 @@
 "use client";
 
 import { createLogger } from "@/lib/logger";
+import { uploadRecording } from "@/lib/recording-upload";
 import {
     getStoredCameraStream,
     getStoredScreenStream,
@@ -13,6 +14,9 @@ import fixWebmDuration from "fix-webm-duration";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const log = createLogger("recording");
+
+/** How often the audio so far is saved, so a lost tab costs at most this much. */
+const CHECKPOINT_MS = 3 * 60_000;
 
 export interface ScreenshotEntry {
   url: string;
@@ -112,6 +116,8 @@ export function useInterviewRecording({
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const stoppedRef = useRef(false);
+  const checkpointTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const checkpointRef = useRef<Promise<void> | null>(null);
   const ttsPlayTimeRef = useRef(0);
   const ttsSourcesRef = useRef<AudioBufferSourceNode[]>([]);
 
@@ -317,6 +323,8 @@ export function useInterviewRecording({
       log.info("Recording MIME:", preferredMime || "(default)");
       const recorder = new MediaRecorder(dest.stream, {
         ...(preferredMime ? { mimeType: preferredMime } : {}),
+        // Speech needs little; this keeps an hour of audio near 20 MB.
+        audioBitsPerSecond: 48_000,
       });
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
@@ -324,6 +332,17 @@ export function useInterviewRecording({
       recorder.start(5000); // collect chunks every 5s
       recordingStart.current = performance.now();
       recorderRef.current = recorder;
+
+      // Rolling checkpoint: the whole recording so far, overwritten in place.
+      const checkpointName = `recording-${Date.now()}-seg0.${preferredMime.includes("webm") || !preferredMime ? "webm" : "m4a"}`;
+      checkpointTimerRef.current = setInterval(() => {
+        if (checkpointRef.current || recorder.state !== "recording" || !chunksRef.current.length) return;
+        const blob = new Blob(chunksRef.current, { type: preferredMime || "audio/webm" });
+        checkpointRef.current = uploadRecording(sessionId, blob, checkpointName)
+          .then(() => log.info("Audio checkpoint saved"))
+          .catch((err) => log.warn("Audio checkpoint failed:", err))
+          .finally(() => { checkpointRef.current = null; });
+      }, CHECKPOINT_MS);
 
       // Audio-only interviews must never acquire camera or screen streams.
       if (captureVisuals) {
@@ -369,7 +388,7 @@ export function useInterviewRecording({
       setIsRecording(true);
       log.info("Started");
     },
-    [enabled, captureVisuals, isRecording, acquireStreams, attachMicStream, takeScreenshots, screenshotIntervalMs],
+    [enabled, captureVisuals, isRecording, acquireStreams, attachMicStream, takeScreenshots, screenshotIntervalMs, sessionId],
   );
 
   /**
@@ -385,6 +404,11 @@ export function useInterviewRecording({
       return { screenshots: screenshotsRef.current };
     }
     stoppedRef.current = true;
+
+    if (checkpointTimerRef.current) clearInterval(checkpointTimerRef.current);
+    checkpointTimerRef.current = null;
+    // The final upload deletes the checkpoint; a late checkpoint must not outlive it.
+    await checkpointRef.current;
 
     // Stop screenshot timer
     if (screenshotTimerRef.current) {
@@ -418,22 +442,8 @@ export function useInterviewRecording({
           : rawBlob;
 
         try {
-          const fname = `recording-${Date.now()}.${ext}`;
-          const form = new FormData();
-          form.append("file", audioBlob, fname);
-          form.append("sessionId", sessionId);
-          form.append("type", "recording");
-          form.append("filename", fname);
-
-          const res = await fetch("/api/session/upload", {
-            method: "POST",
-            body: form,
-          });
-          if (res.ok) {
-            const data = await res.json();
-            audioUrl = data.url;
-            log.info("Audio uploaded:", audioUrl);
-          }
+          audioUrl = await uploadRecording(sessionId, audioBlob, `recording-${Date.now()}.${ext}`);
+          log.info("Audio uploaded");
         } catch (err) {
           log.error("Audio upload failed:", err);
         }
@@ -483,6 +493,7 @@ export function useInterviewRecording({
   useEffect(() => {
     return () => {
       if (screenshotTimerRef.current) clearInterval(screenshotTimerRef.current);
+      if (checkpointTimerRef.current) clearInterval(checkpointTimerRef.current);
       try { recorderRef.current?.stop(); } catch { /* noop */ }
       try { micSourceRef.current?.disconnect(); } catch { /* noop */ }
       try { mixCtxRef.current?.close(); } catch { /* noop */ }
@@ -498,6 +509,7 @@ export function useInterviewRecording({
   const pauseCapture = useCallback(() => {
     if (recorderRef.current?.state === "recording") recorderRef.current.pause();
     if (screenshotTimerRef.current) clearInterval(screenshotTimerRef.current);
+    if (checkpointTimerRef.current) clearInterval(checkpointTimerRef.current);
   }, []);
 
   return {
