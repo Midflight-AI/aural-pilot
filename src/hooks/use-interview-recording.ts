@@ -97,6 +97,7 @@ export function useInterviewRecording({
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
 
   // Refs for recording infrastructure
+  const recordingStart = useRef<number | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const audioMimeRef = useRef<string>("");
@@ -321,6 +322,7 @@ export function useInterviewRecording({
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       recorder.start(5000); // collect chunks every 5s
+      recordingStart.current = performance.now();
       recorderRef.current = recorder;
 
       // Audio-only interviews must never acquire camera or screen streams.
@@ -499,6 +501,7 @@ export function useInterviewRecording({
   }, []);
 
   return {
+    getRecordingSeconds: () => recordingStart.current === null ? 0 : (performance.now() - recordingStart.current) / 1000,
     pauseCapture,
     start,
     getMixedStream: () => mixDestRef.current?.stream ?? null,

@@ -29,6 +29,14 @@ values('1a698808-3525-4887-91af-19f82b77a01b','22222222-2222-4222-8222-222222222
 \ir ../../supabase/migrations/20261123063824_question_interviewer_notes.sql
 \ir invite-lifecycle.sql
 \ir invite-question-snapshot.sql
+\ir ../../supabase/migrations/20261125070627_candidate_introduction_recording.sql
+insert into public.messages("sessionId",role,content,"introductionEndSeconds")
+values ('1a698808-3525-4887-91af-19f82b77a01b','USER','My introduction',18);
+do $$ begin
+  update public.messages set "introductionEndSeconds" = -1 where content = 'My introduction';
+  raise exception 'Accepted a negative recording time';
+exception when check_violation then null;
+end $$;
 \ir ../../supabase/migrations/004_interview_prep.sql
 \ir ../../supabase/migrations/005_account_delete_and_answer_bank.sql
 \ir ../../supabase/migrations/006_internal_pilot_access.sql

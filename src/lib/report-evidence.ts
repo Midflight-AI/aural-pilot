@@ -1,5 +1,5 @@
 type Question = { id?: string; text: string; source?: string };
-type Turn = { questionId?: string | null; role: string; content: string };
+type Turn = { introductionEndSeconds?: number | null; questionId?: string | null; role: string; content: string };
 
 const spoken = (m: Turn) => m.role.toLowerCase() === "user" && m.content.trim().length > 0;
 
@@ -8,12 +8,13 @@ export const NO_ANSWERS_SUMMARY = "No answers were recorded. The participant did
 
 /** Whether any candidate answer was saved: without one, no report is generated. */
 export function hasCandidateAnswers(turns: Turn[]): boolean {
-  return turns.some(spoken);
+  return turns.some(m => m.introductionEndSeconds == null && spoken(m));
 }
 
 // Preserve the full saved transcript. Give the scorer only turns that belong
 // to the shared questions. Unknown or unassigned turns cannot add points.
-export function reportEvidence<Q extends Question, M extends Turn>(questions: Q[], turns: M[]) {
+export function reportEvidence<Q extends Question, M extends Turn>(questions: Q[], messages: M[]) {
+  const turns = messages.filter(m => m.introductionEndSeconds == null);
   if (!questions.some(q => q.source === "invite")) {
     return { questions, turns, supporting: [] as string[], canScore: true };
   }
@@ -27,4 +28,12 @@ export function reportEvidence<Q extends Question, M extends Turn>(questions: Q[
   });
   const scored = turns.filter(m => !!m.questionId && ids.has(m.questionId));
   return { questions: core.filter(q => scored.some(m => m.questionId === q.id)), turns: scored, supporting, canScore: scored.some(spoken) };
+}
+
+/** Keep the introduction available for playback, outside the transcript consumed by job matching. */
+export function interviewSections<M extends { role: unknown; introductionEndSeconds?: number | null }>(messages: M[]) {
+  return {
+    introduction: messages.filter(m => m.introductionEndSeconds != null),
+    messages: messages.filter(m => m.introductionEndSeconds == null),
+  };
 }

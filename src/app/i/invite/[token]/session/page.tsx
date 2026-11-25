@@ -12,6 +12,7 @@ import {
     type SessionEndReason,
     type SessionEndReasonInput,
 } from "@/components/session/session-ended-screen";
+import { renderOpening } from "@/lib/interview-opening";
 import { buildSessionResumeState } from "@/lib/session-resume";
 import { trpc } from "@/lib/trpc/client";
 import dynamic from "next/dynamic";
@@ -116,6 +117,10 @@ export default function InviteSessionPage() {
       language: interview.language,
       followUpDepth: interview.followUpDepth,
       startQuestionIndex: resume.hasQuestion ? resume.questionIndex : undefined,
+      opening: !resume.awaitingIntroduction ? null : renderOpening(interview.opening, {
+        participantName: session.participantName || candidate.data.name, title: interview.title,
+        aiName: interview.aiName, questionCount: interview.questions.length,
+      }),
       questions: interview.questions.map((q: any) => ({
         id: q.id,
         text: q.text,

@@ -363,6 +363,7 @@ export type Database = {
           role: Database["public"]["Enums"]["MessageRole"];
           content: string;
           contentType: Database["public"]["Enums"]["ContentType"];
+          introductionEndSeconds: number | null;
           audioUrl: string | null;
           audioDurationSeconds: number | null;
           transcription: string | null;
@@ -383,6 +384,7 @@ export type Database = {
           role: Database["public"]["Enums"]["MessageRole"];
           content: string;
           contentType?: Database["public"]["Enums"]["ContentType"];
+          introductionEndSeconds?: number | null;
           audioUrl?: string | null;
           audioDurationSeconds?: number | null;
           transcription?: string | null;
@@ -403,6 +405,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["MessageRole"];
           content?: string;
           contentType?: Database["public"]["Enums"]["ContentType"];
+          introductionEndSeconds?: number | null;
           audioUrl?: string | null;
           audioDurationSeconds?: number | null;
           transcription?: string | null;
