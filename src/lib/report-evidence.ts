@@ -1,6 +1,16 @@
 type Question = { id?: string; text: string; source?: string };
 type Turn = { questionId?: string | null; role: string; content: string };
 
+const spoken = (m: Turn) => m.role.toLowerCase() === "user" && m.content.trim().length > 0;
+
+/** What a report says when the candidate never answered: written here, never by the model. */
+export const NO_ANSWERS_SUMMARY = "No answers were recorded. The participant did not respond to any question, so there is nothing to assess.";
+
+/** Whether any candidate answer was saved: without one, no report is generated. */
+export function hasCandidateAnswers(turns: Turn[]): boolean {
+  return turns.some(spoken);
+}
+
 // Preserve the full saved transcript. Give the scorer only turns that belong
 // to the shared questions. Unknown or unassigned turns cannot add points.
 export function reportEvidence<Q extends Question, M extends Turn>(questions: Q[], turns: M[]) {
@@ -16,5 +26,5 @@ export function reportEvidence<Q extends Question, M extends Turn>(questions: Q[
     return [`Supporting evidence — ${q.text}\n${lines.join("\n")}`];
   });
   const scored = turns.filter(m => !!m.questionId && ids.has(m.questionId));
-  return { questions: core.filter(q => scored.some(m => m.questionId === q.id)), turns: scored, supporting, canScore: scored.some(m => m.role.toLowerCase() === "user" && m.content.trim()) };
+  return { questions: core.filter(q => scored.some(m => m.questionId === q.id)), turns: scored, supporting, canScore: scored.some(spoken) };
 }

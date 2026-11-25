@@ -1,4 +1,5 @@
-import { reportEvidence } from "@/lib/report-evidence";
+import { hasCandidateAnswers, NO_ANSWERS_SUMMARY, reportEvidence } from "@/lib/report-evidence";
+import { saveNoAnswersReport } from "@/lib/no-answers-report";
 import { svgDataUrlToPng } from "@/lib/ai/convert-svg";
 import { extractJson } from "@/lib/ai/extract-json";
 import { createLogger } from "@/lib/logger";
@@ -61,6 +62,10 @@ export async function POST(req: Request) {
     }
     const criteria = interview.assessmentCriteria;
 
+    if (!hasCandidateAnswers(msgs)) {
+      await saveNoAnswersReport(sessionId);
+      return NextResponse.json({ summary: NO_ANSWERS_SUMMARY });
+    }
     const evidence = reportEvidence(interview.questions, msgs);
     const whiteboardDrawingsRaw = evidence.turns
       .filter((m) => m.contentType === "WHITEBOARD" && m.whiteboardData)
