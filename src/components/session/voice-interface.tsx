@@ -1,5 +1,4 @@
 "use client";
-import { Camera } from "lucide-react";
 import { InterviewHeader } from "@/components/brand/ramp";
 
 import { CodeBlock } from "@/components/code-editor/code-block";
@@ -7,6 +6,7 @@ import {
     CodeEditorCanvas,
     type CodeEditorCanvasRef,
 } from "@/components/code-editor/code-editor-canvas";
+import { CameraTile, MutedSpeechAlert } from "@/components/session/camera-tile";
 import { IntervieweeHelpPopover } from "@/components/session/interviewee-help-popover";
 import {
     normalizeSessionEndReason,
@@ -46,6 +46,7 @@ import {
 import { useVideoSpike } from "@/hooks/use-video-spike";
 import { useInterviewRecording } from "@/hooks/use-interview-recording";
 import { useIsMobile } from "@/hooks/use-is-mobile";
+import { useMutedSpeech } from "@/hooks/use-muted-speech";
 import { useVoice, type InterviewContext } from "@/hooks/use-voice";
 import { stopRecordingAfterMetadataCheckpoint } from "@/lib/recording-finalization";
 import {
@@ -69,7 +70,6 @@ import {
     Send,
     SkipBack,
     SkipForward,
-    Video,
     Volume2,
     X,
 } from "lucide-react";
@@ -400,6 +400,8 @@ interface VoiceInterfaceProps {
   /** Show camera placement without requesting a device in the design preview. */
   previewWebcam?: boolean;
   previewVoiceState?: "listening" | "speaking" | "thinking";
+  /** Show the candidate muted and talking, with its warning, in the design preview. */
+  previewMutedSpeech?: boolean;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -423,6 +425,7 @@ export function VoiceInterface({
   preview = false,
   previewWebcam = false,
   previewVoiceState = "listening",
+  previewMutedSpeech = false,
 }: VoiceInterfaceProps) {
   useChunkLoadRecovery();
   useSessionToolChunkPrefetch(!preview);
@@ -689,20 +692,6 @@ export function VoiceInterface({
     enabled: true,
     captureVisuals: videoMode && !videoSpike.consent,
   });
-
-  const cameraPipRef = useRef<HTMLVideoElement>(null);
-
-  // Bind camera stream to PIP video element
-  useEffect(() => {
-    const video = cameraPipRef.current;
-    if (video && recording.cameraStream) {
-      video.srcObject = recording.cameraStream;
-      video.play().catch(() => {});
-    }
-    return () => {
-      if (video) video.srcObject = null;
-    };
-  }, [recording.cameraStream]);
 
   // ── Voice hooks ─────────────────────────────────────────────────
   const handleTranscript = useCallback(
@@ -1499,13 +1488,36 @@ export function VoiceInterface({
   const showVoiceProcessing = preview ? previewVoiceState === "thinking" : !showVoiceTransitioning && voice.isProcessing;
   const showVoiceSpeaking = preview ? previewVoiceState === "speaking" :
     !showVoiceTransitioning && !showVoiceProcessing && voice.isSpeaking;
-  const showVoiceListening = preview ? previewVoiceState === "listening" :
+  const showVoiceListening = preview ? previewVoiceState === "listening" && !previewMutedSpeech :
     voice.isConnected &&
     !showVoiceTransitioning &&
     !showVoiceProcessing &&
     !showVoiceSpeaking &&
     voice.isListening;
   const displayAudioLevel = preview ? previewAudioLevel : voice.audioLevel;
+  const micOn = preview ? !previewMutedSpeech : voice.isListening;
+  const talkingWhileMuted = useMutedSpeech(!preview && voice.isConnected && !voice.isListening && !isSaving);
+  const mutedSpeechAlarm = preview ? previewMutedSpeech : talkingWhileMuted;
+  const cameraStream = videoSpike.camera ?? recording.cameraStream ?? null;
+  const showCamera = cameraStream !== null || (preview && previewWebcam);
+  const cameraOnStage = showCamera && !isMobile && !whiteboardActive && !codeEditorActive;
+  const { isListening, startListening, stopListening } = voice;
+  const toggleMic = useCallback(() => {
+    if (isListening) stopListening();
+    else void startListening();
+  }, [isListening, startListening, stopListening]);
+  useEffect(() => {
+    if (preview || !voice.isConnected) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, button, [contenteditable], [role='textbox'], .monaco-editor, .excalidraw")) return;
+      event.preventDefault();
+      toggleMic();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [preview, voice.isConnected, toggleMic]);
   const showTranscribingWithoutMic =
     voice.isTranscribing && !showVoiceTransitioning && !showVoiceSpeaking &&
     !showVoiceProcessing && !showVoiceListening;
@@ -1747,7 +1759,7 @@ export function VoiceInterface({
         </div>
         {/* Current question text */}
         {voice.isConnected && currentQuestionText && (
-          <p className="mt-1.5 text-xs text-muted-foreground line-clamp-1">
+          <p className="mt-2 text-sm font-medium line-clamp-2 md:text-base">
             {currentQuestionText}
           </p>
         )}
@@ -2085,11 +2097,13 @@ export function VoiceInterface({
             <div
               ref={voiceSplitContainerRef}
               data-tour="voice-status"
-              className="flex min-h-0 flex-1 flex-col"
+              className={`flex min-h-0 flex-1 ${cameraOnStage ? "flex-row items-center gap-4 p-4" : "flex-col"}`}
             >
               <div
                 data-testid="voice-status-scroll"
                 className={`flex min-h-0 flex-col items-center gap-8 overflow-y-auto code-scrollbar [justify-content:safe_center] ${
+                  cameraOnStage ? "aspect-video min-w-0 flex-1 rounded-2xl border bg-gradient-to-b from-accent to-card p-6" : ""
+                } ${
                   isMobile
                     ? mobileTranscriptCollapsed
                       ? "flex-1 py-4"
@@ -2244,12 +2258,17 @@ export function VoiceInterface({
                   Animation preview · simulated audio input; microphone is off.
                 </p>
               )}
-              {voice.isConnected && !voice.isListening && !showVoiceProcessing && !showVoiceSpeaking && !showVoiceTransitioning && !voice.isTranscribing && (
-                <p className="text-sm text-muted-foreground">
-                  Click the mic to start speaking
+              {(preview ? previewMutedSpeech : voice.isConnected && !voice.isListening && !showVoiceProcessing && !showVoiceSpeaking && !showVoiceTransitioning && !voice.isTranscribing) && (
+                <p className="flex items-center gap-2 rounded-full bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive">
+                  <MicOff className="h-4 w-4" />
+                  Your mic is muted. Press Unmute or Space to answer.
                 </p>
               )}
               </div>
+
+              {cameraOnStage && (
+                <CameraTile stream={cameraStream} micOn={micOn} alarm={mutedSpeechAlarm} className="aspect-video min-w-0 flex-1" />
+              )}
 
               {/* Mobile: draggable divider between voice and transcript */}
               {isMobile && !mobileTranscriptCollapsed && (
@@ -2587,31 +2606,23 @@ export function VoiceInterface({
             </div>
           )}
           {/* Mic toggle */}
-          <div data-tour="voice-mic" className="flex flex-col items-center gap-0.5">
+          <div data-tour="voice-mic" className={`flex flex-col items-center gap-0.5 ${micOn ? "" : "text-destructive"}`}>
             <Button
               size="icon"
-              variant={voice.isListening ? "default" : "secondary"}
-              className={`h-9 w-9 rounded-full transition-all ${
-                voice.isListening
-                  ? "bg-secondary-500 hover:bg-secondary-600 border-secondary-500"
-                  : ""
+              variant="ghost"
+              aria-label={micOn ? "Mute" : "Unmute"}
+              aria-pressed={!micOn}
+              className={`h-12 w-12 !rounded-full transition-all ${
+                micOn
+                  ? "bg-secondary-500 text-white hover:!bg-secondary-600 hover:text-white"
+                  : `bg-destructive text-destructive-foreground hover:!bg-destructive/90 hover:text-destructive-foreground ${mutedSpeechAlarm ? "ring-4 ring-destructive/30 motion-safe:animate-pulse" : ""}`
               }`}
-              onClick={() => {
-                if (voice.isListening) {
-                  voice.stopListening();
-                } else {
-                  voice.startListening();
-                }
-              }}
+              onClick={toggleMic}
             >
-              {voice.isListening ? (
-                <Mic className="h-4 w-4" />
-              ) : (
-                <MicOff className="h-4 w-4" />
-              )}
+              {micOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
             </Button>
-            <span className="hidden text-[10px] text-muted-foreground md:block">
-              {voice.isListening ? "Mute" : "Unmute"}
+            <span className={`hidden text-[10px] font-medium md:block ${micOn ? "text-muted-foreground" : "text-destructive"}`}>
+              {micOn ? "Mute" : "Unmute"}
             </span>
           </div>
 
@@ -2714,27 +2725,17 @@ export function VoiceInterface({
         </div>
       )}
 
-      {/* ── Camera PIP overlay (video mode) — draggable ────── */}
-      {(videoSpike.camera || (preview && previewWebcam)) && (
-        <div data-testid="webcam-tile" className="absolute bottom-24 right-3 z-20 w-28 overflow-hidden rounded-lg border bg-card shadow-md sm:right-4 sm:w-40">
-          {videoSpike.camera ? <video muted playsInline autoPlay aria-label="Your webcam preview" className="aspect-video w-full object-cover" ref={element => { if (element && element.srcObject !== videoSpike.camera) element.srcObject = videoSpike.camera; }} /> : <div className="flex aspect-video flex-col items-center justify-center gap-1 bg-muted p-2 text-center text-xs text-muted-foreground"><Camera className="h-5 w-5" /><span>Sample webcam position</span></div>}
-        </div>
-      )}
-      {videoMode && recording.cameraStream && (
+      {/* ── Camera PIP while the stage is taken (phone, whiteboard, code) — draggable ── */}
+      {showCamera && !cameraOnStage && (
         <DraggablePip>
-          <video
-            ref={cameraPipRef}
-            autoPlay
-            playsInline
-            muted
-            className="h-28 w-36 object-cover"
-            style={{ transform: "scaleX(-1)" }}
-          />
-          <div className="absolute bottom-1 left-1 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5">
-            <Video className="h-2.5 w-2.5 text-white" />
-            <span className="text-[9px] text-white">Camera</span>
-          </div>
+          <CameraTile stream={cameraStream} micOn={micOn} alarm={mutedSpeechAlarm} className="aspect-video w-40 rounded-none sm:w-56" />
         </DraggablePip>
+      )}
+
+      {mutedSpeechAlarm && !micOn && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-24 z-30 flex justify-center px-3">
+          <div className="pointer-events-auto w-full max-w-2xl"><MutedSpeechAlert onUnmute={toggleMic} /></div>
+        </div>
       )}
 
       {/* ── End interview confirmation dialog ─────────────── */}
