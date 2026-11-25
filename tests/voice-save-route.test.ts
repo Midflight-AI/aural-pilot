@@ -158,6 +158,13 @@ function createOps() {
       async updateSession(sessionId: string, payload: Record<string, unknown>) {
         updatedSessions.push({ sessionId, payload });
       },
+      async completeSession(sessionId: string, payload: Record<string, unknown>) {
+        updatedSessions.push({ sessionId, payload });
+        return true;
+      },
+      runAfterResponse(task: () => Promise<void>) {
+        void task();
+      },
       async generateSummary(...args: unknown[]) {
         summaryCalls.push(args);
       },
@@ -208,6 +215,28 @@ test("handleVoiceSave completes session with segment-based duration", async () =
   });
   assert.equal(summaryCalls.length, 1);
   assert.ok(infoLogs.some((m) => m.includes("COMPLETED (300s)")));
+});
+
+test("handleVoiceSave generates one report when two callers complete together", async () => {
+  const { ops, summaryCalls } = createOps();
+  let claimed = false;
+  const racingOps = {
+    ...ops,
+    async completeSession() {
+      if (claimed) return false;
+      claimed = true;
+      return true;
+    },
+  };
+
+  const [first, second] = await Promise.all([
+    handleVoiceSave({ sessionId: "session-1", complete: true }, racingOps),
+    handleVoiceSave({ sessionId: "session-1", complete: true }, racingOps),
+  ]);
+
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  assert.equal(summaryCalls.length, 1);
 });
 
 test("handleVoiceSave skips already-completed sessions", async () => {

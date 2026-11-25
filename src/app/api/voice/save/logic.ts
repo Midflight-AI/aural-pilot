@@ -112,6 +112,13 @@ export type VoiceSaveOps = {
     sessionId: string,
     payload: Record<string, unknown>,
   ) => Promise<void>;
+  /** Applies the update only while the session is not COMPLETED; true when it did. */
+  completeSession: (
+    sessionId: string,
+    payload: Record<string, unknown>,
+  ) => Promise<boolean>;
+  /** Keeps the function alive for work that must finish after the response is sent. */
+  runAfterResponse: (task: () => Promise<void>) => void;
   generateSummary: (
     sessionId: string,
     interviewTitle: string,
@@ -168,29 +175,34 @@ export async function handleVoiceSave(
           );
         }
 
-        await ops.updateSession(sessionId, {
+        // The browser and the idle-session cron can both complete a session;
+        // only the caller that wins the status change generates the report.
+        const claimed = await ops.completeSession(sessionId, {
           status: "COMPLETED" as const,
           completedAt: now.toISOString(),
           totalDurationSeconds: duration,
         });
+        if (!claimed) return { status: 200, body: { ok: true } };
 
         ops.log.info(`Session ${sessionId} marked COMPLETED (${duration}s)`);
 
         const interview = session.interview;
-        ops
-          .generateSummary(
-            sessionId,
-            interview.title,
-            interview.objective,
-            interview.language,
-            interview.questions,
-            interview.assessmentCriteria,
-            interview.userId,
-            interview.projectId,
-          )
-          .catch((err) => {
-            ops.log.error("Background summary generation failed:", err);
-          });
+        ops.runAfterResponse(() =>
+          ops
+            .generateSummary(
+              sessionId,
+              interview.title,
+              interview.objective,
+              interview.language,
+              interview.questions,
+              interview.assessmentCriteria,
+              interview.userId,
+              interview.projectId,
+            )
+            .catch((err) => {
+              ops.log.error("Background summary generation failed:", err);
+            }),
+        );
       }
     } else if (typeof currentQuestionIndex === "number") {
       const session = await ops.loadSessionForProgress(sessionId);
