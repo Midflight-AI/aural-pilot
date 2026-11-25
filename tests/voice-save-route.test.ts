@@ -162,6 +162,9 @@ function createOps() {
         updatedSessions.push({ sessionId, payload });
         return true;
       },
+      async recoverRelayTurns() {
+        return 0;
+      },
       runAfterResponse(task: () => Promise<void>) {
         void task();
       },

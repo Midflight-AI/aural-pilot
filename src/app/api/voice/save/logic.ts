@@ -117,6 +117,8 @@ export type VoiceSaveOps = {
     sessionId: string,
     payload: Record<string, unknown>,
   ) => Promise<boolean>;
+  /** Saves the relay's copy of turns the browser never saved; returns how many. */
+  recoverRelayTurns: (sessionId: string) => Promise<number>;
   /** Keeps the function alive for work that must finish after the response is sent. */
   runAfterResponse: (task: () => Promise<void>) => void;
   generateSummary: (
@@ -155,6 +157,13 @@ export async function handleVoiceSave(
       const session = await ops.loadSessionForCompletion(sessionId);
 
       if (session && session.status !== "COMPLETED") {
+        try {
+          const recovered = await ops.recoverRelayTurns(sessionId);
+          if (recovered) ops.log.info(`Recovered ${recovered} relay turns for session ${sessionId}`);
+        } catch (err) {
+          // The browser's transcript is still complete enough to report on.
+          ops.log.error("Relay transcript recovery failed:", err);
+        }
         const now = ops.now();
         const cappedNowMs = effectiveNowForSession(session.lastActivityAt, now.getTime());
         const cappedNow = new Date(cappedNowMs).toISOString();

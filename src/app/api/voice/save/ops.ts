@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { verifiedInsights } from "@/lib/report-verification";
 import { hasCandidateAnswers, reportEvidence } from "@/lib/report-evidence";
 import { saveNoAnswersReport } from "@/lib/no-answers-report";
+import { unsavedRelayTurns, type RelayTurnRow } from "@/lib/relay-backup";
 import { svgDataUrlToPng } from "@/lib/ai/convert-svg";
 import { extractJson } from "@/lib/ai/extract-json";
 import { buildSummaryPrompt } from "@/lib/ai/prompts/summary";
@@ -138,6 +139,39 @@ export const voiceSaveOps: VoiceSaveOps = {
       .select("id");
     if (error) throw error;
     return !!data?.length;
+  },
+  async recoverRelayTurns(sessionId) {
+    const [lastSaved, relay] = await Promise.all([
+      supabaseAdmin
+        .from("messages")
+        .select("timestamp")
+        .eq("sessionId", sessionId)
+        .order("timestamp", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("relay_transcript_turns")
+        .select("id, role, content, question_index, spoken_at")
+        .eq("session_id", sessionId)
+        .order("spoken_at", { ascending: true }),
+    ]);
+    if (lastSaved.error) throw lastSaved.error;
+    if (relay.error) throw relay.error;
+    const missing = unsavedRelayTurns(
+      (relay.data ?? []) as RelayTurnRow[],
+      lastSaved.data?.timestamp ?? null,
+    );
+    if (!missing.length) return 0;
+    await voiceSaveOps.insertMessages(
+      sessionId,
+      missing.map((turn) => ({
+        id: turn.id,
+        role: turn.role,
+        content: turn.content,
+        ...(turn.question_index === null ? {} : { questionIndex: turn.question_index }),
+      })),
+    );
+    return missing.length;
   },
   runAfterResponse: (task) => after(task),
   generateSummary,

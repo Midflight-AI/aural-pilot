@@ -3,6 +3,7 @@ import { synthesizeOpenAiSpeech } from "../src/lib/voice/openai-tts";
 import { planIntroductionTurn } from "./introduction-planner";
 import { introductionStyle, introductionPrompt, introductionTurnAction, introductionEvidence, transitionAllowed } from "./introduction-voice-policy";
 import { waitForRealtimeEvent } from "./realtime-handshake";
+import { relayBackup } from "./relay-backup";
 import { relayObservations } from "./relay-observability";
 import { verifyRelayTicket } from "../src/lib/voice/relay-ticket";
 /**
@@ -694,6 +695,8 @@ async function handleMicTest(browserWs: WebSocket) {
 async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sessionId: string) {
   const observations = relayObservations(sessionId);
   browserWs.once("close", () => observations.close());
+  const backup = relayBackup(sessionId);
+  browserWs.once("close", () => backup.stop());
   let modelResponseRequestedAt = 0;
   let responseWaitTimer: ReturnType<typeof setTimeout> | null = null;
   const clearResponseWait = () => { if (responseWaitTimer) clearTimeout(responseWaitTimer); responseWaitTimer = null; };
@@ -811,6 +814,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
         enableTools();
       }
     }
+    if (role === "assistant" || !text.startsWith("[")) backup.addTurn(role, text, awaitingIntroduction ? -1 : currentQuestionIndex);
     conversationHistory.push({ role, text: text.trim() });
     while (conversationHistory.length > MAX_HISTORY_ENTRIES) {
       conversationHistory.shift();
@@ -2251,6 +2255,9 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
   browserWs.on("message", (data) => {
     try {
       const msg = JSON.parse(data.toString());
+      // Back up the microphone before any early return, reconnects included.
+      const micPcm = msg.type === "audio" && msg.data ? Buffer.from(msg.data, "hex") : null;
+      if (micPcm) backup.addMicAudio(micPcm);
 
       if (msg.type === "next_question") {
         if (awaitingIntroduction) return;
@@ -2277,9 +2284,9 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       if (reconnecting) return;
       if (!oaiWs || oaiWs.readyState !== WebSocket.OPEN) return;
 
-      if (msg.type === "audio" && msg.data) {
+      if (micPcm) {
         if (isTransitioning) return;
-        const pcm16k = Buffer.from(msg.data, "hex");
+        const pcm16k = micPcm;
         const nowMs = Date.now();
 
         const samples = new Int16Array(pcm16k.buffer, pcm16k.byteOffset, pcm16k.length / 2);
