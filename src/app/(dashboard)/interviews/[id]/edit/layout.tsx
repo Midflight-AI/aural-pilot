@@ -136,7 +136,20 @@ export default function EditInterviewLayout({
         {/* Header */}
         <div className="no-print">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold">{data.title}</h1>
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold">{data.title}</h1>
+              {data.externalReference && data.externalUrl && (
+                <a
+                  href={data.externalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                >
+                  {data.externalReference}
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"

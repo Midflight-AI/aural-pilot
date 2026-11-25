@@ -134,6 +134,8 @@ export type Database = {
           parsedResume: Json | null;
           companyName: string | null;
           roleTitle: string | null;
+          externalReference: string | null;
+          externalUrl: string | null;
           createdAt: string;
           updatedAt: string;
         };
@@ -169,6 +171,8 @@ export type Database = {
           parsedResume?: Json | null;
           companyName?: string | null;
           roleTitle?: string | null;
+          externalReference?: string | null;
+          externalUrl?: string | null;
           createdAt?: string;
           updatedAt?: string;
         };
@@ -204,6 +208,8 @@ export type Database = {
           parsedResume?: Json | null;
           companyName?: string | null;
           roleTitle?: string | null;
+          externalReference?: string | null;
+          externalUrl?: string | null;
           createdAt?: string;
           updatedAt?: string;
         };

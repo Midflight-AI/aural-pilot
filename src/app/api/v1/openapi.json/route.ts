@@ -218,6 +218,38 @@ To run an interview: 1. Create interview (\`POST /interviews\`), 2. Add question
         },
       },
     },
+    "/interviews/{id}/external-link": {
+      post: {
+        tags: ["Interviews"],
+        summary: "Link interview to an external record",
+        description:
+          "Sets the record this interview was made for (for example a requisition), shown as a link on the interview page. Send both `reference` and `url`, or both null to clear. Safe to repeat.",
+        operationId: "setInterviewExternalLink",
+        parameters: [{ $ref: "#/components/parameters/InterviewId" }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["reference", "url"],
+                properties: {
+                  reference: { type: ["string", "null"], minLength: 1, maxLength: 40, example: "REQ-0042" },
+                  url: { type: ["string", "null"], format: "uri", maxLength: 500, example: "https://your-ats.example/requisitions/42" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Link saved" },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" },
+          "404": { $ref: "#/components/responses/NotFound" },
+          "500": { $ref: "#/components/responses/InternalError" },
+        },
+      },
+    },
     "/interviews/{id}/publish": {
       post: {
         tags: ["Interviews"],
