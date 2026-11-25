@@ -34,7 +34,7 @@ export function relayTurnRows(sessionId: string, turns: unknown): RelayTurnRow[]
 }
 
 export function relayAudioPath(sessionId: string, startedAt: number): string {
-  return `${sessionId}/relay/candidate-${startedAt}.wav`;
+  return `${sessionId}/relay-candidate-${startedAt}.wav`;
 }
 
 export function isWav(bytes: Uint8Array): boolean {
