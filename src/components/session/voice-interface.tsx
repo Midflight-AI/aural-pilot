@@ -1304,6 +1304,11 @@ export function VoiceInterface({
     // post-interview upload time to either media or the completion wait.
     const videoFinishing = videoSpike.finish().catch(() => { videoSaved = false; });
 
+    // Complete first: the transcript and report must never wait on (or be lost
+    // behind) the audio and video uploads, which can be slow or fail.
+    const completing = withTimeout(voice.disconnect(), 8000, "voice disconnect")
+      .catch((err) => console.error("[voice] Failed to complete session:", err));
+
     try {
       await Promise.allSettled([
         withTimeout(saveAllDrawings(), 5000, "save drawings"),
@@ -1352,11 +1357,10 @@ export function VoiceInterface({
       } catch (err) {
         console.error("[voice] Failed to save recording:", err);
       }
-
-      await withTimeout(voice.disconnect(), 8000, "voice disconnect");
     } catch (err) {
       console.error("[voice] Failed to end interview cleanly:", err);
     } finally {
+      await completing;
       await videoFinishing;
       if (videoSaved) onComplete?.(normalizedReason);
       else { setVideoRecoveryNeeded(true); setIsSaving(false); }
