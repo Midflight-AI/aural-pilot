@@ -63,7 +63,7 @@ export function buildSummaryPrompt(
     assessmentCriteria && assessmentCriteria.length > 0
       ? `,
   "criteriaEvaluations": [
-    { "name": "criterion name", "score": 1-10, "reasoning": "brief explanation of the score" }
+    { "name": "criterion name", "score": 1-10, "reasoning": "brief explanation of the score", "evidence": ["exact words the Participant said that support this score"] }
   ]`
       : "";
 
@@ -106,7 +106,8 @@ export function buildSummaryPrompt(
       "score": 8,
       "evaluation": "detailed evaluation of the participant's response to this question",
       "highlights": ["specific strength or notable point"],
-      "improvements": ["area where the response could be improved"]
+      "improvements": ["area where the response could be improved"],
+      "evidence": ["exact words the Participant said in answer to this question"]
     }
   ]`
       : "";
@@ -134,6 +135,7 @@ ${transcript}
 
 Your analysis should:
 Use only the transcript as evidence. Use the exact question text in questionEvaluations. Omit questions that were never asked. Never infer an answer.
+Every question and criterion score must carry "evidence": one to three quotes copied word for word from the Participant's lines (at least four words each, no paraphrasing, no Interviewer lines). Scores without a verbatim quote are discarded, so if the Participant never answered a question or never showed a criterion, leave it out rather than scoring it.
 1. Summarize the key points from the participant's answers
 2. Evaluate how well the participant addressed each topic
 3. Identify recurring themes and notable insights
