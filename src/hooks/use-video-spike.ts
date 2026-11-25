@@ -6,17 +6,16 @@ import { clearVideoManifest,recoverVideoManifests,videoStore } from "@/lib/video
 import { VideoUploadQueue,recoverStoredVideo,type VideoManifest } from "@/lib/video/transport";
 import { videoRequest,videoRequestHeaders,videoTransport } from "@/lib/video/client";
 
-export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent = false) {
+/** A video failure stops only the webcam recording; the interview, its audio and transcript carry on. */
+export function useVideoSpike(sessionId:string, consent = false) {
  const [enabled,setEnabled]=useState(false);
- const [state,setState]=useState<"idle"|"capturing"|"uploading"|"processing"|"attention">("idle");
+ const [state,setState]=useState<"idle"|"capturing"|"stopped"|"uploading"|"processing"|"attention">("idle");
  const [camera,setCamera]=useState<MediaStream|null>(null);
  const [recovery,setRecovery]=useState<VideoManifest[]>([]);
  const retryTaskRef=useRef<Promise<void>|null>(null);
  const captureRef=useRef<WebcamCapture|null>(null);
  const queueRef=useRef<VideoUploadQueue|null>(null);
  const preparedRef=useRef<{camera:MediaStream;queue:VideoUploadQueue}|null>(null);
- const interruptionRef=useRef(onInterrupted);
- interruptionRef.current=onInterrupted;
  useEffect(()=>{
   if(sessionId === "__preview__") return;
   let cancelled=false;
@@ -53,7 +52,7 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent =
  const start=useCallback(async(mixed:MediaStream)=>{
   const prepared=preparedRef.current;
   if(!prepared) throw new Error("Camera preparation is required.");
-  const capture=new WebcamCapture(prepared.camera,mixed,prepared.queue,()=>{setState("attention");interruptionRef.current();},()=>setState("attention"),()=>setState("capturing"));
+  const capture=new WebcamCapture(prepared.camera,mixed,prepared.queue,()=>setState("stopped"),()=>setState("attention"),()=>setState("capturing"));
   captureRef.current=capture;capture.start();setState("capturing");
  },[]);
  const finish=useCallback(async()=>{
@@ -65,7 +64,11 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent =
    observe(sessionId,"video_finalize",performance.now()-started);
    if(queueRef.current) await clearVideoManifest(queueRef.current.manifest.id);
    setRecovery([]);setState("processing");setCamera(null);
-  } catch {observe(sessionId,"video_finalize_failed",performance.now()-started);setState("attention");throw new Error("Video upload needs recovery.");}
+  } catch {
+   // Background retries may already have uploaded and cleared the recording.
+   if(!(await recoverVideoManifests(sessionId)).length) {setRecovery([]);setState("processing");setCamera(null);return;}
+   observe(sessionId,"video_finalize_failed",performance.now()-started);setState("attention");throw new Error("Video upload needs recovery.");
+  }
  },[sessionId]);
  const retry=useCallback(()=>{
   if(retryTaskRef.current) return retryTaskRef.current;
@@ -87,7 +90,7 @@ export function useVideoSpike(sessionId:string,onInterrupted:()=>void, consent =
   return retryTaskRef.current;
  },[sessionId]);
  useEffect(()=>{
-  if(state!=="attention" || captureRef.current?.isRecording()) return;
+  if((state!=="attention"&&state!=="stopped") || captureRef.current?.isRecording()) return;
   const resume=()=>{if(navigator.onLine) void retry().catch(()=>{});};
   const timer=setInterval(resume,15000);
   window.addEventListener("online",resume);

@@ -1,4 +1,5 @@
 import { mergeRecordingEntries, mergeScreenshotEntries, shouldReplaceRecordingReference, type SessionRecordingEntry, type SessionScreenshotEntry } from "@/lib/session-media";
+import { recordedSessionDuration } from "@/lib/recording-duration";
 import { createLogger } from "@/lib/logger";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -695,7 +696,7 @@ export const sessionRouter = router({
       const { data: storedSession, error: mediaReadError } = needsExistingMedia
         ? await ctx.supabase
             .from("sessions")
-            .select("audioRecordingUrl, audioRecordings, screenshots")
+            .select("status, audioRecordingUrl, audioDuration, audioRecordings, screenshots")
             .eq("id", input.sessionId)
             .single()
         : { data: null, error: null };
@@ -737,6 +738,16 @@ export const sessionRouter = router({
 
       if (Object.keys(updateData).length === 0) {
         return { success: true };
+      }
+
+      // The session is completed before the audio upload finishes, so the
+      // recorded duration replaces the estimate made at completion.
+      if (storedSession?.status === "COMPLETED") {
+        const duration = recordedSessionDuration({
+          audioDuration: updateData.audioDuration ?? storedSession.audioDuration,
+          audioRecordings: updateData.audioRecordings ?? storedSession.audioRecordings,
+        });
+        if (duration !== null) updateData.totalDurationSeconds = duration;
       }
 
       const { error } = await ctx.supabase

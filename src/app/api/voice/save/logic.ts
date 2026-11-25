@@ -112,6 +112,15 @@ export type VoiceSaveOps = {
     sessionId: string,
     payload: Record<string, unknown>,
   ) => Promise<void>;
+  /** Applies the update only while the session is not COMPLETED; true when it did. */
+  completeSession: (
+    sessionId: string,
+    payload: Record<string, unknown>,
+  ) => Promise<boolean>;
+  /** Saves the relay's copy of turns the browser never saved; returns how many. */
+  recoverRelayTurns: (sessionId: string) => Promise<number>;
+  /** Keeps the function alive for work that must finish after the response is sent. */
+  runAfterResponse: (task: () => Promise<void>) => void;
   generateSummary: (
     sessionId: string,
     interviewTitle: string,
@@ -148,6 +157,13 @@ export async function handleVoiceSave(
       const session = await ops.loadSessionForCompletion(sessionId);
 
       if (session && session.status !== "COMPLETED") {
+        try {
+          const recovered = await ops.recoverRelayTurns(sessionId);
+          if (recovered) ops.log.info(`Recovered ${recovered} relay turns for session ${sessionId}`);
+        } catch (err) {
+          // The browser's transcript is still complete enough to report on.
+          ops.log.error("Relay transcript recovery failed:", err);
+        }
         const now = ops.now();
         const cappedNowMs = effectiveNowForSession(session.lastActivityAt, now.getTime());
         const cappedNow = new Date(cappedNowMs).toISOString();
@@ -168,29 +184,34 @@ export async function handleVoiceSave(
           );
         }
 
-        await ops.updateSession(sessionId, {
+        // The browser and the idle-session cron can both complete a session;
+        // only the caller that wins the status change generates the report.
+        const claimed = await ops.completeSession(sessionId, {
           status: "COMPLETED" as const,
           completedAt: now.toISOString(),
           totalDurationSeconds: duration,
         });
+        if (!claimed) return { status: 200, body: { ok: true } };
 
         ops.log.info(`Session ${sessionId} marked COMPLETED (${duration}s)`);
 
         const interview = session.interview;
-        ops
-          .generateSummary(
-            sessionId,
-            interview.title,
-            interview.objective,
-            interview.language,
-            interview.questions,
-            interview.assessmentCriteria,
-            interview.userId,
-            interview.projectId,
-          )
-          .catch((err) => {
-            ops.log.error("Background summary generation failed:", err);
-          });
+        ops.runAfterResponse(() =>
+          ops
+            .generateSummary(
+              sessionId,
+              interview.title,
+              interview.objective,
+              interview.language,
+              interview.questions,
+              interview.assessmentCriteria,
+              interview.userId,
+              interview.projectId,
+            )
+            .catch((err) => {
+              ops.log.error("Background summary generation failed:", err);
+            }),
+        );
       }
     } else if (typeof currentQuestionIndex === "number") {
       const session = await ops.loadSessionForProgress(sessionId);

@@ -1,6 +1,7 @@
 "use client";
 import { observe, flushObservations } from "@/lib/observability/client";
 import { micCheckFailureMessage } from "@/lib/voice/mic-check-result";
+import { measureUploadMbps, MIN_VIDEO_UPLOAD_MBPS } from "@/lib/upload-speed";
 import type { ObservationKind } from "@/lib/observability/events";
 import { videoRequestHeaders } from "@/lib/video/client";
 
@@ -1330,7 +1331,7 @@ export function RecordingCameraCheck({ onReady, onChecking }: {
   onReady: (ready: boolean) => void;
   onChecking: (checking: boolean) => void;
 }) {
-  const [phase, setPhase] = useState<"idle" | "requesting" | "preview" | "ready">("idle");
+  const [phase, setPhase] = useState<"idle" | "requesting" | "preview" | "speed" | "ready">("idle");
   const [error, setError] = useState("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -1363,12 +1364,24 @@ export function RecordingCameraCheck({ onReady, onChecking }: {
     streamRef.current = null;
     onReady(record); onChecking(false); setPhase(record ? "ready" : "idle");
   };
+  // Video on a slow uplink falls behind and stops mid-interview, so check first.
+  const confirmCamera = async () => {
+    setPhase("speed"); setError("");
+    let mbps: number | null = null;
+    try { mbps = await measureUploadMbps(); } catch { /* reported below */ }
+    if (!mountedRef.current) return;
+    if (mbps !== null && mbps >= MIN_VIDEO_UPLOAD_MBPS) { finish(true); return; }
+    finish(false);
+    setError(mbps === null
+      ? "Couldn't check your upload speed. Check your connection and test again, or continue without video."
+      : `Your upload speed (${mbps.toFixed(1)} Mbps) is too slow to record video. Use a faster connection and test again, or continue without video.`);
+  };
   return (
     <Card className="overflow-hidden">
       <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start">
         <div className="flex w-full shrink-0 flex-col items-center gap-2 sm:w-64">
           <div className="relative flex aspect-video w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/50">
-            {phase === "preview" ? (
+            {phase === "preview" || phase === "speed" ? (
               <video ref={videoRef} autoPlay playsInline muted aria-label="Camera preview" className="h-full w-full scale-x-[-1] object-cover" />
             ) : <>
               <Camera className={cn("h-10 w-10", phase === "ready" ? "text-primary" : "text-muted-foreground/30")} />
@@ -1379,8 +1392,10 @@ export function RecordingCameraCheck({ onReady, onChecking }: {
           </div>
           {phase === "requesting" ? (
             <Button size="sm" disabled className="w-full"><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Requesting camera…</Button>
+          ) : phase === "speed" ? (
+            <Button size="sm" disabled className="w-full"><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Checking upload speed…</Button>
           ) : phase === "preview" ? (
-            <Button size="sm" onClick={() => finish(true)} className="w-full">Use Camera &amp; Record</Button>
+            <Button size="sm" onClick={() => void confirmCamera()} className="w-full">Use Camera &amp; Record</Button>
           ) : (
             <Button size="sm" variant={phase === "ready" ? "outline" : "default"} onClick={() => void testCamera()} className="w-full">
               <Camera className="mr-1.5 h-3.5 w-3.5" />{phase === "ready" ? "Test Again" : "Test Camera"}
@@ -1390,13 +1405,13 @@ export function RecordingCameraCheck({ onReady, onChecking }: {
         <div className="flex-1 space-y-2">
           <p className="text-sm font-medium">Test your camera to include video with your interview.</p>
           <p className="text-xs text-muted-foreground">
-            {phase === "preview" ? 'Check that you can see yourself, then select “Use Camera & Record” to agree to recording your webcam and both voices.' :
+            {phase === "preview" || phase === "speed" ? 'Check that you can see yourself, then select “Use Camera & Record” to agree to recording your webcam and both voices.' :
               phase === "ready" ? "Camera test passed. Your webcam and both voices will be recorded when you start the interview." :
               'Click “Test Camera” to check your picture. This check is not recorded.'}
           </p>
           <p className="text-xs text-muted-foreground">Authorized recruiters can review recordings. They stay accessible until manually deleted. Keep this tab open until uploading finishes.</p>
           {error && <div role="alert" className="flex items-center gap-1.5 rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive"><AlertCircle className="h-3.5 w-3.5 shrink-0" /><span>{error}</span></div>}
-          {phase !== "requesting" && <p className="text-xs text-muted-foreground">
+          {phase !== "requesting" && phase !== "speed" && <p className="text-xs text-muted-foreground">
             {phase === "idle" ? "Video recording is optional." : <button type="button" onClick={() => finish(false)} className="font-medium text-primary hover:underline">Continue without video recording</button>}
           </p>}
         </div>

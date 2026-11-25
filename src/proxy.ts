@@ -60,13 +60,13 @@ export async function proxy(request: NextRequest) {
     }
     if (path.startsWith("/api/") && !user) {
       // These routes implement their own key, cron, auth or scoped tRPC checks.
-      const selfAuthorized = path.startsWith("/api/v1/") || path.startsWith("/api/trpc/") || path.startsWith("/api/auth/") || path.startsWith("/api/session/video") || path === "/api/internal/video/process" || path === "/api/internal/health" || path === "/api/internal/observations" || path === "/api/session/observations" || path === "/api/locale";
+      const selfAuthorized = path.startsWith("/api/v1/") || path.startsWith("/api/trpc/") || path.startsWith("/api/auth/") || path.startsWith("/api/session/video") || path === "/api/internal/video/process" || path === "/api/internal/health" || path === "/api/internal/sessions/finalize" || path === "/api/internal/relay-backup" || path === "/api/internal/observations" || path === "/api/session/observations" || path === "/api/locale";
       if (!selfAuthorized) {
-        const allowed = ["/api/voice/ticket", "/api/voice/token", "/api/voice/save", "/api/voice/tts-s2s", "/api/session/upload", "/api/session/complete", "/api/session/leave"];
+        const allowed = ["/api/voice/ticket", "/api/voice/token", "/api/voice/save", "/api/voice/tts-s2s", "/api/session/upload", "/api/session/recording-upload", "/api/session/speed-test", "/api/session/complete", "/api/session/leave"];
         if (!allowed.includes(path)) return NextResponse.json({ error: "sign_in_required" }, { status: 401 });
         const scope = await candidateScope(request.cookies.get(CANDIDATE_COOKIE)?.value ?? request.headers.get("x-aural-video-invite"));
         if (!scope?.sessionId) return NextResponse.json({ error: "invitation_required" }, { status: 403 });
-        if (!["/api/voice/ticket", "/api/voice/tts-s2s", "/api/session/upload"].includes(path)) {
+        if (!["/api/voice/ticket", "/api/voice/tts-s2s", "/api/session/upload", "/api/session/speed-test"].includes(path)) {
           const body = await request.clone().json().catch(() => null);
           if (body?.sessionId !== scope.sessionId) return NextResponse.json({ error: "access_denied" }, { status: 403 });
         }

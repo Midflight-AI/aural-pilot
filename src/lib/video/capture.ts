@@ -26,7 +26,8 @@ export class WebcamCapture {
     const audioTrack = mixedAudio.getAudioTracks()[0];
     if (!videoTrack || videoTrack.readyState !== "live" || !audioTrack || audioTrack.readyState !== "live") throw new Error("tracks_unavailable");
     this.recorder = new MediaRecorder(new MediaStream([videoTrack, audioTrack]), {
-      mimeType: VIDEO_MIME, videoBitsPerSecond: 1_250_000, audioBitsPerSecond: 96_000,
+      // A talking head needs little; a lower rate keeps slow uplinks from falling behind.
+      mimeType: VIDEO_MIME, videoBitsPerSecond: 600_000, audioBitsPerSecond: 64_000,
     });
     this.recorder.ondataavailable = (event) => {
       if (event.data.size) void this.queue.append(event.data, performance.now() - this.startMs)
@@ -47,7 +48,7 @@ export class WebcamCapture {
   interrupt = (): void => {
     if (this.stopTask) return;
     this.interrupted = true;
-    this.onInterrupted(); // Caller must stop the voice conversation immediately.
+    this.onInterrupted(); // Video stops; the interview itself carries on.
     void this.stop(true).catch(() => this.onUploadError());
   };
   stop(partial = false): Promise<void> {

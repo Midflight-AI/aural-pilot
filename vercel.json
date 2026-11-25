@@ -25,6 +25,11 @@
    "regions": [
     "syd1"
    ]
+  },
+  "src/app/api/internal/sessions/finalize/route.ts": {
+   "regions": [
+    "syd1"
+   ]
   }
  },
  "crons": [
@@ -35,6 +40,10 @@
   {
    "path": "/api/internal/health",
    "schedule": "* * * * *"
+  },
+  {
+   "path": "/api/internal/sessions/finalize",
+   "schedule": "*/5 * * * *"
   }
  ]
 }
