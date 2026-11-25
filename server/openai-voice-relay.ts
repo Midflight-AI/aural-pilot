@@ -1,3 +1,4 @@
+import { isIntroductionReply } from "../src/lib/interview-opening";
 import { synthesizeOpenAiSpeech } from "../src/lib/voice/openai-tts";
 import { planIntroductionTurn } from "./introduction-planner";
 import { introductionStyle, introductionPrompt, introductionTurnAction, introductionEvidence, transitionAllowed } from "./introduction-voice-policy";
@@ -973,7 +974,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     }
     if (isIntroduction) {
       const speech = pendingInterviewComplete ? "Thank you for your time. Take care."
-        : awaitingIntroduction ? ctx.opening
+        : awaitingIntroduction ? (reason === "repeat introduction" ? introductionReminder : ctx.opening)
         : assistantTurnsThisQuestion === 0 ? `${introductionRecognition} ${sortedQuestions[currentQuestionIndex]?.text ?? ""}`.trim()
         : plannedIntroductionSpeech;
       if (!speech) return;
@@ -1067,6 +1068,8 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     );
   }
 
+  const introductionReminder = "Before we get into the role, please tell me a little about yourself.";
+
   function startFirstQuestion() {
     awaitingIntroduction = false;
     ctx.opening = null;
@@ -1081,6 +1084,10 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
 
   function handleCommittedUserText(committedText: string, reason: string): boolean {
     if (awaitingIntroduction) {
+      if (!isIntroductionReply(committedText)) {
+        requestAssistantResponse("repeat introduction", { tool_choice: "none", instructions: introductionReminder });
+        return true;
+      }
       startFirstQuestion();
       return true;
     }
@@ -1709,6 +1716,10 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
           // ── Function call arguments complete ──
           case "response.function_call_arguments.done": {
             if (msg.name === "signal_question_change") {
+              if (awaitingIntroduction) {
+                pendingFunctionCalls.push({ callId: msg.call_id, name: msg.name, args: introductionReminder });
+                break;
+              }
               let args: { questionIndex?: number; userRequested?: boolean } = {};
               try { args = JSON.parse(msg.arguments || "{}"); } catch { /* ignore */ }
               const newIdx = args.questionIndex ?? (currentQuestionIndex + 1);
@@ -2238,7 +2249,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       const msg = JSON.parse(data.toString());
 
       if (msg.type === "next_question") {
-        if (awaitingIntroduction) { cancelOngoingResponse(); startFirstQuestion(); return; }
+        if (awaitingIntroduction) return;
         log.info("Browser requested next question");
         const nextIdx = Math.min(currentQuestionIndex + 1, sortedQuestions.length);
         if (nextIdx !== currentQuestionIndex) {

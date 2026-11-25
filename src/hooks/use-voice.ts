@@ -136,7 +136,7 @@ export function useVoice({
     aiTranscript: "",
     lastAssistantUtteranceEndedAt: 0,
     audioLevel: 0,
-    currentQuestionIndex: interviewContext.startQuestionIndex ?? 0,
+    currentQuestionIndex: interviewContext.opening ? -1 : interviewContext.startQuestionIndex ?? 0,
     totalQuestions: interviewContext.questions.length,
   });
 
@@ -1348,7 +1348,7 @@ export function useVoice({
           ? currentIndex <= 0
           : currentIndex >= totalQuestions - 1;
 
-      if (isAtBoundary) return;
+      if (currentIndex < 0 || isAtBoundary) return;
 
       dropAudioUntilQuestionChangeRef.current = true;
       clearResponseWatchdog();

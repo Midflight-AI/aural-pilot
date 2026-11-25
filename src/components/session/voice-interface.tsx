@@ -2661,45 +2661,49 @@ export function VoiceInterface({
 
           {/* Previous / Next / End */}
           <div data-tour="voice-progress" className="flex items-center gap-2 md:gap-6">
-            <div className="flex flex-col items-center gap-0.5">
-              <Button
-                size="icon"
-                variant="secondary"
-                className="h-9 w-9 rounded-full"
-                onClick={handlePreviousQuestion}
-                disabled={
-                  !voice.isConnected ||
-                  voice.currentQuestionIndex <= 0
-                }
-              >
-                {voice.isTransitioning && voice.transitionDirection === "previous" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <SkipBack className="h-4 w-4" />
-                )}
-              </Button>
-              <span className="hidden text-[10px] text-muted-foreground md:block">Previous</span>
-            </div>
+            {voice.currentQuestionIndex >= 0 && (
+              <>
+                <div className="flex flex-col items-center gap-0.5">
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    className="h-9 w-9 rounded-full"
+                    onClick={handlePreviousQuestion}
+                    disabled={
+                      !voice.isConnected ||
+                      voice.currentQuestionIndex <= 0
+                    }
+                  >
+                    {voice.isTransitioning && voice.transitionDirection === "previous" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <SkipBack className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <span className="hidden text-[10px] text-muted-foreground md:block">Previous</span>
+                </div>
 
-            <div className="flex flex-col items-center gap-0.5">
-              <Button
-                size="icon"
-                variant="secondary"
-                className="h-9 w-9 rounded-full"
-                onClick={handleNextQuestion}
-                disabled={
-                  !voice.isConnected ||
-                  voice.currentQuestionIndex >= voice.totalQuestions - 1
-                }
-              >
-                {voice.isTransitioning && voice.transitionDirection !== "previous" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <SkipForward className="h-4 w-4" />
-                )}
-              </Button>
-              <span className="hidden text-[10px] text-muted-foreground md:block">Next</span>
-            </div>
+                <div className="flex flex-col items-center gap-0.5">
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    className="h-9 w-9 rounded-full"
+                    onClick={handleNextQuestion}
+                    disabled={
+                      !voice.isConnected ||
+                      voice.currentQuestionIndex >= voice.totalQuestions - 1
+                    }
+                  >
+                    {voice.isTransitioning && voice.transitionDirection !== "previous" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <SkipForward className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <span className="hidden text-[10px] text-muted-foreground md:block">Next</span>
+                </div>
+              </>
+            )}
 
             <div className="flex flex-col items-center gap-0.5">
               <Button

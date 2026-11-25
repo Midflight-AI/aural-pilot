@@ -243,5 +243,6 @@ test('a lost connection repeats an unanswered welcome, then resumes after a save
   const reply = {id:'reply',role:'USER',content:'I like cooking',introductionEndSeconds:19};
   assert.equal(buildSessionResumeState({messages:[welcome]}).awaitingIntroduction,true);
   assert.equal(buildSessionResumeState({messages:[welcome,reply]}).awaitingIntroduction,false);
+  assert.equal(buildSessionResumeState({messages:[welcome,{...reply,content:"Skip to the next question."}]}).awaitingIntroduction,true);
   assert.equal(buildSessionResumeState({messages:[{...welcome,introductionEndSeconds:null}]}).awaitingIntroduction,false);
 });

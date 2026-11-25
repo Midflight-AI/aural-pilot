@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { isIntroductionReply } from "../src/lib/interview-opening";
 import { introductionPrompt, introductionStyle, transitionAllowed } from '../server/introduction-voice-policy';
 
 test('introduction accepts short answers but never transitions before an answer or during speech',()=>{
@@ -125,11 +126,12 @@ test('structured planner rejects missing information and malformed decisions',as
  assert.deepEqual(validateIntroductionPlan({action:'advance',question:'',recognition:'You initiated the investigation.',missingDetail:''}),{action:'advance',question:'',recognition:'You initiated the investigation.',missingDetail:''});
 });
 
-test('an introduction or a spoken skip starts the first approved question exactly once', () => {
- for (const answer of ['I enjoy hiking', 'Skip to the next question']) {
+test('the first job question waits for an introduction, including after navigation requests', () => {
+ for (const answer of ['I enjoy hiking', 'Skip to the next question', 'next', 'Pass.', 'Miri']) {
   const body = `
    let awaitingIntroduction = true, questionEnteredAt = 0, introductionRecognition = "";
    const ctx = {opening:"Introduce yourself"}, sortedQuestions = [{text:"What did you deliver?"}];
+   const introductionReminder = "Please introduce yourself.";
    const sent = [], replies = [];
    const send = event => sent.push(event);
    const requestAssistantResponse = (reason, response) => replies.push(response);
@@ -138,8 +140,14 @@ test('an introduction or a spoken skip starts the first approved question exactl
    handleCommittedUserText(answer,"voice");
    return {awaitingIntroduction, sent, replies};
   `;
-  const run = new Function('answer',ts.transpileModule(body,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText);
-  const result = run(answer);
+  const run = new Function('answer','isIntroductionReply',ts.transpileModule(body,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText);
+  const result = run(answer,isIntroductionReply);
+  if (['Skip to the next question','next','Pass.'].includes(answer)) {
+   assert.equal(result.awaitingIntroduction,true);
+   assert.deepEqual(result.sent,[]);
+   assert.equal(result.replies[0].instructions,'Please introduce yourself.');
+   continue;
+  }
   assert.equal(result.awaitingIntroduction,false);
   assert.deepEqual(result.sent,[{type:'question_change',questionIndex:0,totalQuestions:1,auto:true}]);
   assert.equal(result.replies.length,1);

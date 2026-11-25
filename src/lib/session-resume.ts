@@ -1,3 +1,5 @@
+import { isIntroductionReply } from "./interview-opening";
+
 /**
  * Rebuilds what a participant should see when they re-enter a session already underway, whether they
  * came back through their invite link or the owner reopened it from the Sessions tab.
@@ -124,7 +126,7 @@ export function buildSessionResumeState(input: {
 
   return {
     isResuming: messages.length > 0,
-    awaitingIntroduction: messages.every(m => m.introductionEndSeconds != null && m.role.toLowerCase() === "assistant"),
+    awaitingIntroduction: messages.every(m => m.introductionEndSeconds != null && (m.role.toLowerCase() !== "user" || !isIntroductionReply(m.content))),
     questionIndex: resolvedIdx >= 0 ? resolvedIdx : 0,
     hasQuestion: Boolean(input.currentQuestionId || input.fallbackQuestionId),
     voiceMessages,
