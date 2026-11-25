@@ -109,6 +109,16 @@ async function stopProcess(child: ChildProcess): Promise<void> {
   ]);
 }
 
+/** Interview audio goes straight to Storage: mock the grant, the upload and the playback URL. */
+async function mockRecordingUpload(page: Page, playbackUrl: string): Promise<void> {
+  await page.route("**/api/session/recording-upload", async (route: Route) => {
+    const { action } = JSON.parse(route.request().postData() || "{}");
+    const url = action === "grant" ? "https://storage.example.invalid/upload" : playbackUrl;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ url, path: "recording" }) });
+  });
+  await page.route("https://storage.example.invalid/**", (route: Route) => route.fulfill({ status: 200, body: "{}" }));
+}
+
 async function readRelayConnections(page: Page): Promise<RelayConnection[]> {
   return page.evaluate(() => {
     const raw = window.sessionStorage.getItem("__functionalRelayConnections");
@@ -554,19 +564,13 @@ test("voice completion shows the farewell, waits for final save, and only then n
   const recordingBodies: Array<Record<string, unknown>> = [];
   const audioUrl = "https://media.example.invalid/functional-recording.webm";
 
-  // Audio-only sessions now persist their recording before the final transcript.
-  // Mock both storage boundaries so this fixture never calls the placeholder DB.
-  await page.route("**/api/session/upload", async (route: Route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ url: audioUrl, path: "functional-recording.webm" }),
-    });
-  });
+  // The final transcript save (which completes the session) never waits on the
+  // audio upload. Mock both storage boundaries so this fixture never calls the placeholder DB.
+  await mockRecordingUpload(page, audioUrl);
   await page.route("**/api/trpc/session.saveRecording", async (route: Route) => {
     const payload = JSON.parse(route.request().postData() || "{}").json;
     recordingBodies.push(payload);
-    assert.equal(saveBodies.length, 0, "Recording metadata must precede final transcript save");
+    assert.equal(saveBodies.length, 1, "Final transcript save is sent before recording metadata");
     await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   });
 
@@ -617,6 +621,11 @@ test("voice completion shows the farewell, waits for final save, and only then n
 
   const [savePayload] = saveBodies as Array<Record<string, unknown>>;
   assert.equal(savePayload.complete, true);
+  await waitForCondition(
+    async () => recordingBodies.length > 0,
+    6_000,
+    "Expected recording metadata while the final save is still pending",
+  );
   assert.equal(recordingBodies.length, 1, "Audio-only recording metadata is saved once");
   assert.equal(recordingBodies[0].audioRecordingUrl, audioUrl);
   assert.ok(Number(recordingBodies[0].audioDuration) > 0);
@@ -742,7 +751,7 @@ test("video upload failure keeps recovery visible and preserves audio before par
     if (body.action === "finalize") { finalized = true; assert.equal(audioSaved, true); }
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body.action === "upload" ? { acknowledged: true } : { state: "processing" }) });
   });
-  await page.route("**/api/session/upload", route => route.fulfill({ status: 200, contentType: "application/json", body: '{"url":"https://media.example.invalid/audio.webm"}' }));
+  await mockRecordingUpload(page, "https://media.example.invalid/audio.webm");
   await page.route("**/api/trpc/session.saveRecording", async route => { audioSaved = true; await route.fulfill({ status: 200, contentType: "application/json", body: "{}" }); });
   await page.route("**/api/voice/save", route => route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true}' }));
   await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=farewell-complete&recordWebcam=1`);
@@ -788,6 +797,7 @@ test("video upload failure keeps recovery visible and preserves audio before par
 test("camera checklist previews before consent, releases camera and supports denial retry", async () => {
   const page = await browser.newPage();
   try {
+    await page.route("**/api/session/speed-test", (route) => route.fulfill({ status: 200, contentType: "application/json", body: '{"bytes":1000000}' }));
     await page.goto(`${baseUrl}/functional-tests/voice?scenario=camera-checklist`);
     await waitForCondition(async () => (await page.getByTestId("harness-ready").textContent()) === "true");
     await page.evaluate(() => {
@@ -809,7 +819,7 @@ test("camera checklist previews before consent, releases camera and supports den
     assert.equal(await page.getByRole("button", { name: "Next", exact: true }).isDisabled(), true);
     const track = await page.getByLabel("Camera preview").evaluateHandle(el => (el as HTMLVideoElement).srcObject instanceof MediaStream ? ((el as HTMLVideoElement).srcObject as MediaStream).getVideoTracks()[0] : null);
     await page.getByRole("button", { name: "Use Camera & Record" }).click();
-    assert.equal(await page.getByTestId("camera-ready").textContent(), "true");
+    await waitForCondition(async () => (await page.getByTestId("camera-ready").textContent()) === "true", 5_000, "Expected the camera to be confirmed after the upload speed check");
     assert.equal(await track.evaluate(value => value?.readyState), "ended");
     await page.getByRole("button", { name: "Continue without video recording" }).click();
     assert.equal(await page.getByTestId("camera-ready").textContent(), "false");
