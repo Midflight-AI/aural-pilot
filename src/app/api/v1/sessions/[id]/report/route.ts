@@ -17,6 +17,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   try {
     const caller = analysisRouter.createCaller(await apiCallerContext(auth));
     const report = await caller.getSessionSummary({ sessionId: id });
-    return Response.json({ data: { ...report, ...interviewSections(report.messages ?? []) } });
+    const sections = interviewSections(report.messages ?? []);
+    return Response.json({ data: sections.introduction.length ? { ...report, ...sections } : report });
   } catch (error) { return apiCallerError(error); }
 }

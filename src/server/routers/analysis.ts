@@ -148,7 +148,7 @@ export const analysisRouter = router({
         messages: session.messages,
         totalDurationSeconds: recordedSessionDuration(session) ?? session.totalDurationSeconds,
         audioRecordingUrl,
-        introductionRecordingUrl,
+        ...(introductionRecordingUrl ? { introductionRecordingUrl } : {}),
         audioRecordings,
         audioDuration: (session as Record<string, unknown>).audioDuration as number | null,
         screenshots,
