@@ -1,3 +1,4 @@
+import { verifiedInsights } from "@/lib/report-verification";
 import { hasCandidateAnswers, reportEvidence } from "@/lib/report-evidence";
 import { saveNoAnswersReport } from "@/lib/no-answers-report";
 import { svgDataUrlToPng } from "@/lib/ai/convert-svg";
@@ -274,21 +275,7 @@ async function generateSummary(
       throw parseErr;
     }
 
-    const insightsData: Record<string, unknown> = {
-      keyInsights: [...(Array.isArray(parsed.keyInsights) ? parsed.keyInsights : []), ...evidence.supporting],
-    };
-    if (evidence.canScore && parsed.criteriaEvaluations) {
-      insightsData.criteriaEvaluations = parsed.criteriaEvaluations;
-    }
-    if (evidence.canScore && parsed.questionEvaluations) {
-      insightsData.questionEvaluations = parsed.questionEvaluations;
-    }
-    if (parsed.researchFindings) {
-      insightsData.researchFindings = parsed.researchFindings;
-    }
-    if (parsed.toneAnalysis) {
-      insightsData.toneAnalysis = parsed.toneAnalysis;
-    }
+    const insightsData = verifiedInsights(parsed, evidence.turns, evidence);
 
     await supabaseAdmin
       .from("sessions")
