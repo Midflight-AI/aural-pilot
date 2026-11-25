@@ -940,7 +940,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       !!outputTranscriptBuffer;
     if (shouldCancel && oaiWs && oaiWs.readyState === WebSocket.OPEN) {
       responseInFlight = false;
-      if (!isIntroduction) oaiWs.send(JSON.stringify({ type: "response.cancel" }));
+      if (!isIntroduction && !awaitingIntroduction) oaiWs.send(JSON.stringify({ type: "response.cancel" }));
     }
     outputTranscriptBuffer = "";
     pendingTtsText = [];
@@ -972,7 +972,8 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       oaiWs.send(JSON.stringify({type:"session.update",session:{type:"realtime",instructions: pendingInterviewComplete ? "The interview is complete. Say one brief farewell and ask no questions." : buildSystemPrompt(ctx,currentQuestionIndex) + "\n" + introductionEvidence(introductionAnswers)}}));
       log.info(`Introduction response state session=${sessionId} question=${currentQuestionIndex + 1} assistantTurns=${assistantTurnsThisQuestion}`);
     }
-    if (isIntroduction) {
+    if (isIntroduction || awaitingIntroduction) {
+      const wasOpening = awaitingIntroduction;
       const speech = pendingInterviewComplete ? "Thank you for your time. Take care."
         : awaitingIntroduction ? (reason === "repeat introduction" ? introductionReminder : ctx.opening)
         : assistantTurnsThisQuestion === 0 ? `${introductionRecognition} ${sortedQuestions[currentQuestionIndex]?.text ?? ""}`.trim()
@@ -1001,10 +1002,13 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
           }
           if(controller.signal.aborted || browserClosed)return;
           responseInFlight=false;modelIsSpeaking=false;responseAudioStarted=false;
-          pushHistory("assistant",speech);noteAssistantTurnAgainstFollowUpBudget();
+          pushHistory("assistant",speech);
+          if (!wasOpening) noteAssistantTurnAgainstFollowUpBudget();
           plannedIntroductionSpeech=null;
           send({type:"tts_ended"});
           if(pendingInterviewComplete)markInterviewComplete("approved farewell");
+          const queued = takeQueuedAssistantResponse();
+          if (queued) requestAssistantResponse(queued.reason, queued.response);
         }).catch(()=>{
           if(controller.signal.aborted || browserClosed)return;
           responseInFlight=false;modelIsSpeaking=false;responseAudioStarted=false;
@@ -1919,7 +1923,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
               }
               requestAssistantResponse("function call follow-up");
             } else if (queuedResponse) {
-              requestAssistantResponse(`queued after ${queuedResponse.reason}`, queuedResponse.response);
+              requestAssistantResponse(queuedResponse.reason, queuedResponse.response);
             }
 
             if (completedFarewellTurn) {

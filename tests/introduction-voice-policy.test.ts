@@ -118,6 +118,26 @@ test('introduction responses exclude stale interviewer turns and request the aut
  assert.doesNotMatch(code,/conversation:\s*"none"/);
 });
 
+test('the standard voice reads the opening and skip reminder verbatim', () => {
+  const run = new Function('reason', ts.transpileModule(`
+    const ctx = {opening: 'Hi Miri. Tell me about yourself.'};
+    const introductionReminder = 'Before we get into the role, please tell me a little about yourself.';
+    const awaitingIntroduction = true, isIntroduction = false, pendingInterviewComplete = false;
+    const vadSpeechActive = false, reconnecting = false, isTransitioning = false, interviewDone = false;
+    const WebSocket = {OPEN: 1}, oaiWs = {readyState: 1, send() { throw new Error('Unexpected model response'); }};
+    const AZURE_ENDPOINT = 'wss://example.test', AZURE_API_KEY = 'test';
+    let responseInFlight = false, introductionRecognition = '', introductionSpeechAbort = null;
+    let spoken;
+    const clearQuestionPrompt = () => {};
+    const synthesizeOpenAiSpeech = text => { spoken = text; return new Promise(() => {}); };
+    ${callback('requestAssistantResponse')}
+    requestAssistantResponse(reason);
+    return spoken;
+  `, {compilerOptions: {target: ts.ScriptTarget.ES2022}}).outputText);
+  assert.equal(run('initial greeting'), 'Hi Miri. Tell me about yourself.');
+  assert.equal(run('repeat introduction'), 'Before we get into the role, please tell me a little about yourself.');
+});
+
 
 test('structured planner rejects missing information and malformed decisions',async()=>{
  const {validateIntroductionPlan}=await import('../server/introduction-planner');
