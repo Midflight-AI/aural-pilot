@@ -24,7 +24,7 @@ test("leaves unknown fields as written and treats a blank opening as none", () =
 test("the relay says the opening and waits before question 1", async () => {
   const { openingRule } = await import("../server/openai-voice-relay-helpers");
   const rule = openingRule({ title: "Video Editor", opening: 'Hi Maria, tell me "about" you.' }, 1, 6);
-  assert.match(rule, /saying exactly this.*"Hi Maria, tell me 'about' you\."/s);
+  assert.ok(rule.includes(`saying exactly this, then stop and wait for the participant to reply: "Hi Maria, tell me 'about' you."`));
   assert.match(rule, /NOT call signal_question_change/);
 });
 
