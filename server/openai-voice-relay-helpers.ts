@@ -188,3 +188,10 @@ export function shouldAllowTtsBargeIn({
   if (consecutiveFrames < thresholdFrames) return false;
   return true;
 }
+
+/** How the interview begins: the interview's own opening, else the built-in greeting. */
+export function openingRule(ctx: { title: string; opening?: string | null }, currentQ: number, count: number): string {
+  if (!ctx.opening || currentQ !== 1) return `Start at question ${currentQ}. First, give a warm greeting — introduce yourself by name, mention the topic "${ctx.title}" and that there are ${count} questions. Then say a transition phrase like "Let's get started. Here is the first question." ONLY AFTER that, ask the question. The greeting, the transition phrase, and the question MUST be three separate sentences — NEVER combine them into one.`;
+  return `Open the interview by saying exactly this, then stop and wait for the participant to reply: "${ctx.opening.replace(/"/g, "'")}"
+   Let them answer fully. This opening exchange is a warm-up: it is not question 1, it is not scored, and you must NOT call signal_question_change for it. Wait for the participant to introduce themselves. Briefly thank the participant and ask question 1 when prompted. Do not repeat the opening later in the interview.`;
+}

@@ -1,3 +1,4 @@
+import { isIntroductionReply } from "../src/lib/interview-opening";
 import { synthesizeOpenAiSpeech } from "../src/lib/voice/openai-tts";
 import { planIntroductionTurn } from "./introduction-planner";
 import { introductionStyle, introductionPrompt, introductionTurnAction, introductionEvidence, transitionAllowed } from "./introduction-voice-policy";
@@ -27,6 +28,7 @@ import {
   followUpLimitNotice,
   followUpsSpentOnQuestion,
   type PromptQuestion,
+  openingRule,
   promptQuestionList,
   questionChangeOutput,
   shouldAllowTtsBargeIn,
@@ -220,6 +222,8 @@ interface InterviewContext {
   language: string;
   followUpDepth: string;
   startQuestionIndex?: number;
+  /** Sent only on a session's first connection, merge fields already filled. */
+  opening?: string | null;
   questions: Array<PromptQuestion & {
     starterCode?: { language: string; code: string } | null;
     order: number;
@@ -338,7 +342,7 @@ ${ctx.objective ? `- Objective: ${ctx.objective}` : ""}
 ${questionList}
 
 ## Your Behavior
-1. Start at question ${currentQ}. First, give a warm greeting — introduce yourself by name, mention the topic "${ctx.title}" and that there are ${sorted.length} questions. Then say a transition phrase like "Let's get started. Here is the first question." ONLY AFTER that, ask the question. The greeting, the transition phrase, and the question MUST be three separate sentences — NEVER combine them into one.
+1. ${openingRule(ctx, currentQ, sorted.length)}
 2. ${depthRule}
 3. When a question is sufficiently discussed, call the signal_question_change function to move forward. "Sufficiently discussed" means the participant has given a detailed, specific answer — NOT a vague statement like "I had many challenges" or "that's a good question."${vagueAnswer}
 4. After transitioning, naturally introduce the next question. Usually start with a short acknowledgement or appreciation of the participant's last answer before asking the next question.
@@ -697,6 +701,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
   const sortedQuestions = ctx.questions.sort((a, b) => a.order - b.order);
   const isZh = isChineseInterview(ctx);
   let currentQuestionIndex = ctx.startQuestionIndex ?? 0;
+  let awaitingIntroduction = Boolean(ctx.opening && currentQuestionIndex === 0);
   let questionEnteredAt = Date.now();
   const isIntroduction = introductionStyle(process.env.AURAL_INTERVIEW_STYLE);
   const MIN_QUESTION_DWELL_MS = isIntroduction ? 0 : 15_000;
@@ -799,7 +804,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
 
   function pushHistory(role: "user" | "assistant", text: string) {
     if (!text.trim()) return;
-    if (role === "user" && !text.startsWith("[")) {
+    if (!awaitingIntroduction && role === "user" && !text.startsWith("[")) {
       userCommittedWordsThisQuestion += text.trim().split(/\s+/).length;
       if (isIntroduction) introductionAnswers.push({question: currentQuestionIndex + 1, text: text.trim()});
       if (!toolsEnabled && userCommittedWordsThisQuestion >= MIN_WORDS_BEFORE_TRANSITION) {
@@ -834,6 +839,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
    * participant has heard as many follow-ups as the interview allows.
    */
   function noteAssistantTurnAgainstFollowUpBudget() {
+    if (awaitingIntroduction) return;
     const followUpBudget = questionFollowUpLimit(ctx.followUpDepth, sortedQuestions[currentQuestionIndex]);
     assistantTurnsThisQuestion++;
     if (!oaiWs || oaiWs.readyState !== WebSocket.OPEN) return;
@@ -934,7 +940,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       !!outputTranscriptBuffer;
     if (shouldCancel && oaiWs && oaiWs.readyState === WebSocket.OPEN) {
       responseInFlight = false;
-      if (!isIntroduction) oaiWs.send(JSON.stringify({ type: "response.cancel" }));
+      if (!isIntroduction && !awaitingIntroduction) oaiWs.send(JSON.stringify({ type: "response.cancel" }));
     }
     outputTranscriptBuffer = "";
     pendingTtsText = [];
@@ -966,8 +972,10 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       oaiWs.send(JSON.stringify({type:"session.update",session:{type:"realtime",instructions: pendingInterviewComplete ? "The interview is complete. Say one brief farewell and ask no questions." : buildSystemPrompt(ctx,currentQuestionIndex) + "\n" + introductionEvidence(introductionAnswers)}}));
       log.info(`Introduction response state session=${sessionId} question=${currentQuestionIndex + 1} assistantTurns=${assistantTurnsThisQuestion}`);
     }
-    if (isIntroduction) {
+    if (isIntroduction || awaitingIntroduction) {
+      const wasOpening = awaitingIntroduction;
       const speech = pendingInterviewComplete ? "Thank you for your time. Take care."
+        : awaitingIntroduction ? (reason === "repeat introduction" ? introductionReminder : ctx.opening)
         : assistantTurnsThisQuestion === 0 ? `${introductionRecognition} ${sortedQuestions[currentQuestionIndex]?.text ?? ""}`.trim()
         : plannedIntroductionSpeech;
       if (!speech) return;
@@ -994,10 +1002,13 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
           }
           if(controller.signal.aborted || browserClosed)return;
           responseInFlight=false;modelIsSpeaking=false;responseAudioStarted=false;
-          pushHistory("assistant",speech);noteAssistantTurnAgainstFollowUpBudget();
+          pushHistory("assistant",speech);
+          if (!wasOpening) noteAssistantTurnAgainstFollowUpBudget();
           plannedIntroductionSpeech=null;
           send({type:"tts_ended"});
           if(pendingInterviewComplete)markInterviewComplete("approved farewell");
+          const queued = takeQueuedAssistantResponse();
+          if (queued) requestAssistantResponse(queued.reason, queued.response);
         }).catch(()=>{
           if(controller.signal.aborted || browserClosed)return;
           responseInFlight=false;modelIsSpeaking=false;responseAudioStarted=false;
@@ -1061,7 +1072,29 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     );
   }
 
+  const introductionReminder = "Before we get into the role, please tell me a little about yourself.";
+
+  function startFirstQuestion() {
+    awaitingIntroduction = false;
+    ctx.opening = null;
+    questionEnteredAt = Date.now();
+    introductionRecognition = "Thanks. Let’s get into the role.";
+    send({ type: "question_change", questionIndex: 0, totalQuestions: sortedQuestions.length, auto: true });
+    requestAssistantResponse("first job question", {
+      tool_choice: "none",
+      instructions: `The introduction is complete. Briefly thank the participant without repeating personal details, then ask exactly this question and wait: ${sortedQuestions[0].text}`,
+    });
+  }
+
   function handleCommittedUserText(committedText: string, reason: string): boolean {
+    if (awaitingIntroduction) {
+      if (!isIntroductionReply(committedText)) {
+        requestAssistantResponse("repeat introduction", { tool_choice: "none", instructions: introductionReminder });
+        return true;
+      }
+      startFirstQuestion();
+      return true;
+    }
     if (tryHandleExplicitUserNavigation(committedText)) {
       return true;
     }
@@ -1152,7 +1185,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     speechTranscriptCommitted = true;
     observations.emit("voice_turn_committed", lastVadSpeechEnd ? Math.min(3_600_000, Math.max(0, Date.now() - lastVadSpeechEnd)) : undefined);
     pushHistory("user", committedText);
-    send({ type: "asr_ended", text: committedText, questionIndex: currentQuestionIndex });
+    send({ type: "asr_ended", text: committedText, questionIndex: awaitingIntroduction ? -1 : currentQuestionIndex });
     log.info(`Committed user transcript (${reason}): ${JSON.stringify(committedText)}`);
     inputTranscriptBuffer = "";
     volcAsrAccumulator = "";
@@ -1687,6 +1720,10 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
           // ── Function call arguments complete ──
           case "response.function_call_arguments.done": {
             if (msg.name === "signal_question_change") {
+              if (awaitingIntroduction) {
+                pendingFunctionCalls.push({ callId: msg.call_id, name: msg.name, args: introductionReminder });
+                break;
+              }
               let args: { questionIndex?: number; userRequested?: boolean } = {};
               try { args = JSON.parse(msg.arguments || "{}"); } catch { /* ignore */ }
               const newIdx = args.questionIndex ?? (currentQuestionIndex + 1);
@@ -1886,7 +1923,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
               }
               requestAssistantResponse("function call follow-up");
             } else if (queuedResponse) {
-              requestAssistantResponse(`queued after ${queuedResponse.reason}`, queuedResponse.response);
+              requestAssistantResponse(queuedResponse.reason, queuedResponse.response);
             }
 
             if (completedFarewellTurn) {
@@ -2088,7 +2125,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     send({ type: "ready", sessionId: "openai-session" });
     send({
       type: "question_change",
-      questionIndex: currentQuestionIndex,
+      questionIndex: awaitingIntroduction ? -1 : currentQuestionIndex,
       totalQuestions: sortedQuestions.length,
     });
 
@@ -2109,7 +2146,10 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
         content: [{ type: "input_text", text: `[SYSTEM] ${greeting}` }],
       },
     }));
-    requestAssistantResponse("initial greeting", { tool_choice: "none" });
+    requestAssistantResponse("initial greeting", {
+      tool_choice: "none",
+      ...(awaitingIntroduction ? { instructions: `Say this opening exactly, then stop and wait for the participant: ${ctx.opening}` } : {}),
+    });
   } catch (err) {
     observations.emit("voice_connect_failed");
     log.error("Failed to connect to OpenAI:", err);
@@ -2213,6 +2253,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       const msg = JSON.parse(data.toString());
 
       if (msg.type === "next_question") {
+        if (awaitingIntroduction) return;
         log.info("Browser requested next question");
         const nextIdx = Math.min(currentQuestionIndex + 1, sortedQuestions.length);
         if (nextIdx !== currentQuestionIndex) {
@@ -2312,7 +2353,10 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
             lastUserInput = Date.now();
             queuedAssistantResponse = null;
             pushHistory("user", text);
-          if (tryHandleExplicitUserNavigation(text)) {
+            if (awaitingIntroduction && msg.source === "asr_interim_watchdog") {
+              send({ type: "asr_ended", text, questionIndex: -1 });
+            }
+          if (!awaitingIntroduction && tryHandleExplicitUserNavigation(text)) {
             return;
           }
           send({ type: "interrupt" });

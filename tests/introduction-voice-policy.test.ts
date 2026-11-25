@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { isIntroductionReply } from "../src/lib/interview-opening";
 import { introductionPrompt, introductionStyle, transitionAllowed } from '../server/introduction-voice-policy';
 
 test('introduction accepts short answers but never transitions before an answer or during speech',()=>{
@@ -117,10 +118,59 @@ test('introduction responses exclude stale interviewer turns and request the aut
  assert.doesNotMatch(code,/conversation:\s*"none"/);
 });
 
+test('the standard voice reads the opening and skip reminder verbatim', () => {
+  const run = new Function('reason', ts.transpileModule(`
+    const ctx = {opening: 'Hi Miri. Tell me about yourself.'};
+    const introductionReminder = 'Before we get into the role, please tell me a little about yourself.';
+    const awaitingIntroduction = true, isIntroduction = false, pendingInterviewComplete = false;
+    const vadSpeechActive = false, reconnecting = false, isTransitioning = false, interviewDone = false;
+    const WebSocket = {OPEN: 1}, oaiWs = {readyState: 1, send() { throw new Error('Unexpected model response'); }};
+    const AZURE_ENDPOINT = 'wss://example.test', AZURE_API_KEY = 'test';
+    let responseInFlight = false, introductionRecognition = '', introductionSpeechAbort = null;
+    let spoken;
+    const clearQuestionPrompt = () => {};
+    const synthesizeOpenAiSpeech = text => { spoken = text; return new Promise(() => {}); };
+    ${callback('requestAssistantResponse')}
+    requestAssistantResponse(reason);
+    return spoken;
+  `, {compilerOptions: {target: ts.ScriptTarget.ES2022}}).outputText);
+  assert.equal(run('initial greeting'), 'Hi Miri. Tell me about yourself.');
+  assert.equal(run('repeat introduction'), 'Before we get into the role, please tell me a little about yourself.');
+});
+
 
 test('structured planner rejects missing information and malformed decisions',async()=>{
  const {validateIntroductionPlan}=await import('../server/introduction-planner');
  assert.throws(()=>validateIntroductionPlan({action:'follow_up',question:'What did you contribute?',recognition:'',missingDetail:''}));
  assert.throws(()=>validateIntroductionPlan({action:'unknown',question:'',recognition:'',missingDetail:''}));
  assert.deepEqual(validateIntroductionPlan({action:'advance',question:'',recognition:'You initiated the investigation.',missingDetail:''}),{action:'advance',question:'',recognition:'You initiated the investigation.',missingDetail:''});
+});
+
+test('the first job question waits for an introduction, including after navigation requests', () => {
+ for (const answer of ['I enjoy hiking', 'Skip to the next question', 'next', 'Pass.', 'Miri']) {
+  const body = `
+   let awaitingIntroduction = true, questionEnteredAt = 0, introductionRecognition = "";
+   const ctx = {opening:"Introduce yourself"}, sortedQuestions = [{text:"What did you deliver?"}];
+   const introductionReminder = "Please introduce yourself.";
+   const sent = [], replies = [];
+   const send = event => sent.push(event);
+   const requestAssistantResponse = (reason, response) => replies.push(response);
+   ${callback('startFirstQuestion')}
+   ${callback('handleCommittedUserText')}
+   handleCommittedUserText(answer,"voice");
+   return {awaitingIntroduction, sent, replies};
+  `;
+  const run = new Function('answer','isIntroductionReply',ts.transpileModule(body,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText);
+  const result = run(answer,isIntroductionReply);
+  if (['Skip to the next question','next','Pass.'].includes(answer)) {
+   assert.equal(result.awaitingIntroduction,true);
+   assert.deepEqual(result.sent,[]);
+   assert.equal(result.replies[0].instructions,'Please introduce yourself.');
+   continue;
+  }
+  assert.equal(result.awaitingIntroduction,false);
+  assert.deepEqual(result.sent,[{type:'question_change',questionIndex:0,totalQuestions:1,auto:true}]);
+  assert.equal(result.replies.length,1);
+  assert.ok(result.replies[0].instructions.includes('What did you deliver?'));
+ }
 });

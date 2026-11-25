@@ -1,3 +1,5 @@
+import { isIntroductionReply } from "./interview-opening";
+
 /**
  * Rebuilds what a participant should see when they re-enter a session already underway, whether they
  * came back through their invite link or the owner reopened it from the Sessions tab.
@@ -13,6 +15,7 @@ export interface ResumeMessage {
   role: string;
   content: string;
   contentType?: string | null;
+  introductionEndSeconds?: number | null;
   whiteboardData?: unknown;
   timestamp?: string | number | Date | null;
 }
@@ -39,6 +42,7 @@ export interface ResumeDrawing {
 export interface SessionResumeState {
   /** True once the session has any stored message, i.e. this is a re-entry rather than a first visit. */
   isResuming: boolean;
+  awaitingIntroduction: boolean;
   /** Index into the interview's questions to resume at. */
   questionIndex: number;
   /** False when nothing pinned a question, so callers can leave the interface on its own default. */
@@ -122,6 +126,7 @@ export function buildSessionResumeState(input: {
 
   return {
     isResuming: messages.length > 0,
+    awaitingIntroduction: messages.every(m => m.introductionEndSeconds != null && (m.role.toLowerCase() !== "user" || !isIntroductionReply(m.content))),
     questionIndex: resolvedIdx >= 0 ? resolvedIdx : 0,
     hasQuestion: Boolean(input.currentQuestionId || input.fallbackQuestionId),
     voiceMessages,

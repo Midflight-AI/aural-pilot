@@ -134,6 +134,8 @@ export type Database = {
           parsedResume: Json | null;
           companyName: string | null;
           roleTitle: string | null;
+          externalReference: string | null;
+          externalUrl: string | null;
           createdAt: string;
           updatedAt: string;
         };
@@ -169,6 +171,8 @@ export type Database = {
           parsedResume?: Json | null;
           companyName?: string | null;
           roleTitle?: string | null;
+          externalReference?: string | null;
+          externalUrl?: string | null;
           createdAt?: string;
           updatedAt?: string;
         };
@@ -204,6 +208,8 @@ export type Database = {
           parsedResume?: Json | null;
           companyName?: string | null;
           roleTitle?: string | null;
+          externalReference?: string | null;
+          externalUrl?: string | null;
           createdAt?: string;
           updatedAt?: string;
         };
@@ -363,6 +369,7 @@ export type Database = {
           role: Database["public"]["Enums"]["MessageRole"];
           content: string;
           contentType: Database["public"]["Enums"]["ContentType"];
+          introductionEndSeconds: number | null;
           audioUrl: string | null;
           audioDurationSeconds: number | null;
           transcription: string | null;
@@ -383,6 +390,7 @@ export type Database = {
           role: Database["public"]["Enums"]["MessageRole"];
           content: string;
           contentType?: Database["public"]["Enums"]["ContentType"];
+          introductionEndSeconds?: number | null;
           audioUrl?: string | null;
           audioDurationSeconds?: number | null;
           transcription?: string | null;
@@ -403,6 +411,7 @@ export type Database = {
           role?: Database["public"]["Enums"]["MessageRole"];
           content?: string;
           contentType?: Database["public"]["Enums"]["ContentType"];
+          introductionEndSeconds?: number | null;
           audioUrl?: string | null;
           audioDurationSeconds?: number | null;
           transcription?: string | null;

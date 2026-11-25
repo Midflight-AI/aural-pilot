@@ -1,4 +1,6 @@
-import { reportEvidence } from "@/lib/report-evidence";
+import { verifiedInsights } from "@/lib/report-verification";
+import { hasCandidateAnswers, NO_ANSWERS_SUMMARY, reportEvidence } from "@/lib/report-evidence";
+import { saveNoAnswersReport } from "@/lib/no-answers-report";
 import { svgDataUrlToPng } from "@/lib/ai/convert-svg";
 import { extractJson } from "@/lib/ai/extract-json";
 import { createLogger } from "@/lib/logger";
@@ -61,6 +63,10 @@ export async function POST(req: Request) {
     }
     const criteria = interview.assessmentCriteria;
 
+    if (!hasCandidateAnswers(msgs)) {
+      await saveNoAnswersReport(sessionId);
+      return NextResponse.json({ summary: NO_ANSWERS_SUMMARY });
+    }
     const evidence = reportEvidence(interview.questions, msgs);
     const whiteboardDrawingsRaw = evidence.turns
       .filter((m) => m.contentType === "WHITEBOARD" && m.whiteboardData)
@@ -149,21 +155,7 @@ export async function POST(req: Request) {
 
     const parsed = extractJson(response.content);
 
-    const insightsData: Record<string, unknown> = {
-      keyInsights: [...(Array.isArray(parsed.keyInsights) ? parsed.keyInsights : []), ...evidence.supporting],
-    };
-    if (evidence.canScore && parsed.criteriaEvaluations) {
-      insightsData.criteriaEvaluations = parsed.criteriaEvaluations;
-    }
-    if (evidence.canScore && parsed.questionEvaluations) {
-      insightsData.questionEvaluations = parsed.questionEvaluations;
-    }
-    if (parsed.researchFindings) {
-      insightsData.researchFindings = parsed.researchFindings;
-    }
-    if (parsed.toneAnalysis) {
-      insightsData.toneAnalysis = parsed.toneAnalysis;
-    }
+    const insightsData = verifiedInsights(parsed, evidence.turns, evidence);
 
     await supabaseAdmin
       .from("sessions")

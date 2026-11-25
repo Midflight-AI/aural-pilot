@@ -1,4 +1,7 @@
-import { reportEvidence } from "@/lib/report-evidence";
+import { randomUUID } from "node:crypto";
+import { verifiedInsights } from "@/lib/report-verification";
+import { hasCandidateAnswers, reportEvidence } from "@/lib/report-evidence";
+import { saveNoAnswersReport } from "@/lib/no-answers-report";
 import { svgDataUrlToPng } from "@/lib/ai/convert-svg";
 import { extractJson } from "@/lib/ai/extract-json";
 import { buildSummaryPrompt } from "@/lib/ai/prompts/summary";
@@ -40,17 +43,20 @@ const voiceSaveOps: VoiceSaveOps = {
     const ordered = sessionQuestionOrder(questions);
     // Database defaults give every row in one insert the same timestamp.
     const firstTurnMs = Date.now() - messages.length + 1;
-    const { error } = await supabaseAdmin.from("messages").insert(
+    const { error } = await supabaseAdmin.from("messages").upsert(
       messages.map((m, index) => ({
+        id: m.id ?? randomUUID(),
         timestamp: new Date(firstTurnMs + index).toISOString(),
         sessionId,
         role: m.role === "user" ? ("USER" as const) : ("ASSISTANT" as const),
         content: m.content,
         contentType: "TEXT" as const,
         questionId: resolveVoiceQuestionId(m, ordered),
+        ...(m.questionIndex === -1 ? { introductionEndSeconds: Math.max(0, Number(m.introductionEndSeconds) || 0) } : {}),
         wordCount: m.content.split(/\s+/).length,
         transcription: m.source === "chat" ? "chat" : null,
       })),
+      { onConflict: "id", ignoreDuplicates: true },
     );
     if (error) throw error;
   },
@@ -161,6 +167,10 @@ async function generateSummary(
       return;
     }
 
+    if (!hasCandidateAnswers(allMessages)) {
+      await saveNoAnswersReport(sessionId);
+      return;
+    }
     const evidence = reportEvidence(questions ?? [], allMessages);
     const whiteboardDrawingsRaw = evidence.turns
       .filter((m) => m.contentType === "WHITEBOARD" && m.whiteboardData)
@@ -269,21 +279,7 @@ async function generateSummary(
       throw parseErr;
     }
 
-    const insightsData: Record<string, unknown> = {
-      keyInsights: [...(Array.isArray(parsed.keyInsights) ? parsed.keyInsights : []), ...evidence.supporting],
-    };
-    if (evidence.canScore && parsed.criteriaEvaluations) {
-      insightsData.criteriaEvaluations = parsed.criteriaEvaluations;
-    }
-    if (evidence.canScore && parsed.questionEvaluations) {
-      insightsData.questionEvaluations = parsed.questionEvaluations;
-    }
-    if (parsed.researchFindings) {
-      insightsData.researchFindings = parsed.researchFindings;
-    }
-    if (parsed.toneAnalysis) {
-      insightsData.toneAnalysis = parsed.toneAnalysis;
-    }
+    const insightsData = verifiedInsights(parsed, evidence.turns, evidence);
 
     await supabaseAdmin
       .from("sessions")

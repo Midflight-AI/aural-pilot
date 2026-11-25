@@ -47,6 +47,7 @@ import {
     CheckCircle2,
     Loader2,
     Mic,
+    MicOff,
     Monitor,
     RefreshCw,
     RotateCcw,
@@ -319,8 +320,8 @@ function CameraCheck({
   return (
     <Card className="overflow-hidden">
       <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start">
-        <div className="flex flex-col items-center gap-2">
-          <div className="relative h-36 w-44 overflow-hidden rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/50">
+        <div className="flex w-full shrink-0 flex-col items-center gap-2 sm:w-64">
+          <div className="relative aspect-video w-full overflow-hidden rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/50">
             {photo ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -348,7 +349,7 @@ function CameraCheck({
           {!photo && !streaming && !done && (
             <Button size="sm" onClick={startCamera} className="w-full">
               <Camera className="mr-1.5 h-3.5 w-3.5" />
-              Start Collecting
+              Start camera
             </Button>
           )}
           {streaming && (
@@ -944,8 +945,8 @@ function MicCheck({ done, onDone, language, sessionId, allowSkip = true }: { don
   return (
     <Card className="overflow-hidden">
       <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start">
-        <div className="flex flex-col items-center gap-2">
-          <div className="relative flex h-36 w-44 flex-col items-center justify-center gap-2 overflow-hidden rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/50">
+        <div className="flex w-full shrink-0 flex-col items-center gap-2 sm:w-64">
+          <div className="relative flex aspect-video w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/50">
             <AudioLines
               className={cn(
                 "h-10 w-10 transition-colors",
@@ -1228,8 +1229,8 @@ function ScreenCheck({
   return (
     <Card className="overflow-hidden">
       <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start">
-        <div className="flex flex-col items-center gap-2">
-          <div className="relative flex h-36 w-44 items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/50">
+        <div className="flex w-full shrink-0 flex-col items-center gap-2 sm:w-64">
+          <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/50">
             {thumbnail ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -1365,8 +1366,8 @@ export function RecordingCameraCheck({ onReady, onChecking }: {
   return (
     <Card className="overflow-hidden">
       <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start">
-        <div className="flex flex-col items-center gap-2">
-          <div className="relative flex h-36 w-44 flex-col items-center justify-center gap-2 overflow-hidden rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/50">
+        <div className="flex w-full shrink-0 flex-col items-center gap-2 sm:w-64">
+          <div className="relative flex aspect-video w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-lg border-2 border-dashed border-muted-foreground/20 bg-muted/50">
             {phase === "preview" ? (
               <video ref={videoRef} autoPlay playsInline muted aria-label="Camera preview" className="h-full w-full scale-x-[-1] object-cover" />
             ) : <>
@@ -1520,30 +1521,63 @@ export function IntervieweeOnboarding({
     );
   }
 
+  const checks = [
+    needsVisualChecks && { label: "Photo", done: cameraDone },
+    needsMicCheck && { label: "Speaker and microphone", done: micDone },
+    needsVisualChecks && { label: "Screen sharing", done: screenDone },
+  ].filter((check): check is { label: string; done: boolean } => Boolean(check));
+
   return (
     <div className="flex min-h-screen flex-col bg-muted/30">
       {header}
       <StepIndicator current="checklist" />
-      <div className="mx-auto w-full max-w-2xl flex-1 space-y-4 px-4 pb-8">
-        {needsVisualChecks && <CameraCheck done={cameraDone} onDone={() => setCameraDone(true)} allowSkip={!antiCheatingEnabled} />}
-        {needsMicCheck && <MicCheck sessionId={sessionId} done={micDone} onDone={() => setMicDone(true)} language={language} allowSkip={!antiCheatingEnabled && !voiceEnabled} />}
-        {videoAvailable && <RecordingCameraCheck onReady={setRecordWebcam} onChecking={setCheckingCamera} />}
-        {needsVisualChecks && <ScreenCheck done={screenDone} onDone={() => setScreenDone(true)} allowSkip={!antiCheatingEnabled} />}
-
-        <div className="flex items-center justify-center gap-3 pt-4">
-          <Button variant="outline" onClick={() => { setRecordWebcam(false); setCheckingCamera(false); setStep("info"); }}>
-            Back
-          </Button>
-          <Button disabled={!allChecksDone} onClick={() => {
-            if (voiceEnabled) setStep("howItWorks");
-            else handleComplete();
-          }}>
-            Next
-          </Button>
+      <div className="mx-auto grid w-full max-w-6xl flex-1 items-start gap-6 px-4 pb-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="space-y-4">
+          <h1 className="text-2xl font-semibold tracking-tight">Check your camera and mic</h1>
+          {needsVisualChecks && <CameraCheck done={cameraDone} onDone={() => setCameraDone(true)} allowSkip={!antiCheatingEnabled} />}
+          {needsMicCheck && <MicCheck sessionId={sessionId} done={micDone} onDone={() => setMicDone(true)} language={language} allowSkip={!antiCheatingEnabled && !voiceEnabled} />}
+          {videoAvailable && <RecordingCameraCheck onReady={setRecordWebcam} onChecking={setCheckingCamera} />}
+          {needsVisualChecks && <ScreenCheck done={screenDone} onDone={() => setScreenDone(true)} allowSkip={!antiCheatingEnabled} />}
         </div>
-        <p className="text-center text-xs text-muted-foreground">
-          Chrome is recommended for a better experience.
-        </p>
+
+        <Card className="lg:sticky lg:top-6">
+          <CardContent className="space-y-5 p-5">
+            <div>
+              <p className="text-base font-semibold">{interviewTitle}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {[`${questionCount} ${questionCount === 1 ? "question" : "questions"}`, timeLimitMinutes ? `About ${timeLimitMinutes} min` : null].filter(Boolean).join(" · ")}
+              </p>
+            </div>
+            {checks.length > 0 && (
+              <ul className="space-y-2.5" aria-label="Checks">
+                {checks.map((check) => (
+                  <li key={check.label} className={cn("flex items-center gap-2 text-sm", check.done ? "font-medium text-secondary-600 dark:text-secondary-400" : "text-muted-foreground")}>
+                    {check.done ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <span className="h-4 w-4 shrink-0 rounded-full border-2" />}
+                    {check.label}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {voiceEnabled && (
+              <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
+                <MicOff className="mt-0.5 h-4 w-4 shrink-0" />
+                Your mic starts muted. Press Unmute when you&apos;re ready to answer.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => { setRecordWebcam(false); setCheckingCamera(false); setStep("info"); }}>
+                Back
+              </Button>
+              <Button className="flex-1" disabled={!allChecksDone} onClick={() => {
+                if (voiceEnabled) setStep("howItWorks");
+                else handleComplete();
+              }}>
+                Next
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Chrome is recommended for a better experience.</p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

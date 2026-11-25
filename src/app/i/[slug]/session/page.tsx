@@ -17,6 +17,7 @@ import {
 } from "@/components/session/session-ended-screen";
 import type { InterviewContext } from "@/hooks/use-voice";
 import { DEFAULT_FOLLOW_UP_DEPTH } from "@/lib/follow-up-depth";
+import { renderOpening } from "@/lib/interview-opening";
 import { REOPEN_SESSION_PARAM } from "@/lib/session-reopen";
 import { buildSessionResumeState } from "@/lib/session-resume";
 import { trpc } from "@/lib/trpc/client";
@@ -197,6 +198,12 @@ export default function SlugSessionPage() {
       language: interview.data.language,
       followUpDepth: interview.data.followUpDepth,
       startQuestionIndex: resume.hasQuestion ? resume.questionIndex : undefined,
+      opening: !resume.awaitingIntroduction ? null : renderOpening(interview.data.opening, {
+        participantName: session.data.participantName,
+        title: interview.data.title,
+        aiName: interview.data.aiName,
+        questionCount: interview.data.questions.length,
+      }),
       questions: interview.data.questions.map((q: any) => ({
         text: q.text,
         type: q.type,
