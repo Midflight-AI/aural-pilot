@@ -27,6 +27,7 @@ import {
   followUpLimitNotice,
   followUpsSpentOnQuestion,
   type PromptQuestion,
+  openingRule,
   promptQuestionList,
   questionChangeOutput,
   shouldAllowTtsBargeIn,
@@ -220,6 +221,8 @@ interface InterviewContext {
   language: string;
   followUpDepth: string;
   startQuestionIndex?: number;
+  /** Sent only on a session's first connection, merge fields already filled. */
+  opening?: string | null;
   questions: Array<PromptQuestion & {
     starterCode?: { language: string; code: string } | null;
     order: number;
@@ -338,7 +341,7 @@ ${ctx.objective ? `- Objective: ${ctx.objective}` : ""}
 ${questionList}
 
 ## Your Behavior
-1. Start at question ${currentQ}. First, give a warm greeting — introduce yourself by name, mention the topic "${ctx.title}" and that there are ${sorted.length} questions. Then say a transition phrase like "Let's get started. Here is the first question." ONLY AFTER that, ask the question. The greeting, the transition phrase, and the question MUST be three separate sentences — NEVER combine them into one.
+1. ${openingRule(ctx, currentQ, sorted.length)}
 2. ${depthRule}
 3. When a question is sufficiently discussed, call the signal_question_change function to move forward. "Sufficiently discussed" means the participant has given a detailed, specific answer — NOT a vague statement like "I had many challenges" or "that's a good question."${vagueAnswer}
 4. After transitioning, naturally introduce the next question. Usually start with a short acknowledgement or appreciation of the participant's last answer before asking the next question.

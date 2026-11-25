@@ -40,6 +40,8 @@ export interface InterviewContext {
   language: string;
   followUpDepth: string;
   startQuestionIndex?: number;
+  /** Spoken first, merge fields already filled; only on a fresh start. */
+  opening?: string | null;
   questions: Array<{
   id?: string;
   text: string;
@@ -200,6 +202,7 @@ export function useVoice({
     interviewContext.startQuestionIndex ?? 0
   );
   const assistantQuestionIndexRef = useRef(currentQuestionIndexRef.current);
+  const openingSentRef = useRef(false);
   const questionIds = useRef(interviewContext.questions.map(q => q.id));
   const totalQuestionsRef = useRef(interviewContext.questions.length);
   const latestCodeUpdateRef = useRef<{ content: string; language: string } | null>(
@@ -690,14 +693,20 @@ export function useVoice({
         binaryType: "arraybuffer",
         reconnectAttempts: 2,
         reconnectDelayMs: 1500,
-        buildInitMessage: () => ({
-          type: "init",
-          sessionId,
-          context: {
-            ...interviewContext,
-            startQuestionIndex: currentQuestionIndexRef.current,
-          },
-        }),
+        buildInitMessage: () => {
+          // A reconnect resumes mid-interview, so only the first connection greets.
+          const opening = openingSentRef.current ? null : interviewContext.opening;
+          openingSentRef.current = true;
+          return {
+            type: "init",
+            sessionId,
+            context: {
+              ...interviewContext,
+              opening,
+              startQuestionIndex: currentQuestionIndexRef.current,
+            },
+          };
+        },
         onJsonMessage: (msg) => {
           handleRelayMessage(msg);
         },
