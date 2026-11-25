@@ -31,7 +31,7 @@ export function reportEvidence<Q extends Question, M extends Turn>(questions: Q[
 }
 
 /** Keep the introduction available for playback, outside the transcript consumed by job matching. */
-export function interviewSections<M extends { introductionEndSeconds?: number | null }>(messages: M[]) {
+export function interviewSections<M extends { role: unknown; introductionEndSeconds?: number | null }>(messages: M[]) {
   return {
     introduction: messages.filter(m => m.introductionEndSeconds != null),
     messages: messages.filter(m => m.introductionEndSeconds == null),
