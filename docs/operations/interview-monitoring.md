@@ -15,6 +15,8 @@ Operational events contain only a session UUID, an allow-listed event kind, dura
 
 Configure the relay's `AURAL_OBSERVABILITY_URL` to the same environment's `/api/internal/observations`. Never send preview session metrics to the production database. The `VOICE_RELAY_AUTH_SECRET` must match the receiver. Telemetry endpoint failures are logged without tokens, transcripts or raw provider responses.
 
+The relay also posts its backup copy of each interview (committed turns, and the candidate's microphone as one-minute WAV segments named `relay-candidate-<ms>.wav` in the session's `recordings` folder) to `/api/internal/relay-backup` on the same origin, with the same secret. Completion fills any turns the browser never saved from `relay_transcript_turns`. The `/api/internal/sessions/finalize` cron (every 5 minutes) completes voice sessions idle for 30 minutes that have a transcript, so they still get a report.
+
 Before release: run remote CI and database access/idempotency tests; verify unauthenticated ingestion/read denial; exercise real concurrent voice sessions and early disconnect, retry, upload recovery, processing and playback. Record exact deployment/image, measured concurrency, outcomes and remaining limits here. Do not infer voice capacity from the video worker benchmark.
 
 The authenticated `/operations` page is restricted to explicit existing staff user IDs in `AURAL_OPERATIONS_USER_IDS`; it fails closed when unset. It shows the same aggregate snapshot without exposing candidate records.
