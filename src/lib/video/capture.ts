@@ -47,7 +47,7 @@ export class WebcamCapture {
   interrupt = (): void => {
     if (this.stopTask) return;
     this.interrupted = true;
-    this.onInterrupted(); // Caller must stop the voice conversation immediately.
+    this.onInterrupted(); // Video stops; the interview itself carries on.
     void this.stop(true).catch(() => this.onUploadError());
   };
   stop(partial = false): Promise<void> {

@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 
 /** Recovery remains reachable after reload, even when the interview is complete. */
 export function VideoRecovery({sessionId}:{sessionId:string}) {
- const video=useVideoSpike(sessionId,()=>{});
+ const video=useVideoSpike(sessionId);
  const [error,setError]=useState("");
  if(!video.recovery.some(manifest=>manifest.chunks.length>0||manifest.sealed)) return null;
  return <VideoRecoveryPanel uploading={video.state === "uploading"} error={error} onRetry={async()=>{setError("");try{await video.retry();}catch{setError("Upload paused. Retrying automatically when connected. Keep this browser data.");}}} />;

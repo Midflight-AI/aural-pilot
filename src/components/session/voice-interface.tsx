@@ -683,7 +683,7 @@ export function VoiceInterface({
     window.addEventListener("pointerup", onUp);
   }, []);
 
-  const videoSpike = useVideoSpike(sessionId, () => { recording.cancelTts(); void voice.disconnect(); handleEndInterviewRef.current(); }, recordWebcam);
+  const videoSpike = useVideoSpike(sessionId, recordWebcam);
   const [videoRecoveryNeeded, setVideoRecoveryNeeded] = useState(false);
 
   // ── Audio recording with optional visual capture ──────────────────────────────────
@@ -2213,7 +2213,7 @@ export function VoiceInterface({
                   <Button onClick={async () => { try { await videoSpike.retry(); setVideoRecoveryNeeded(false); if (locallyCompleted) onComplete?.(localCompletionReason); } catch (error) { setError(error instanceof Error ? error.message : "Recovery failed."); } }}>Retry video upload</Button>
                 </div>
               )}
-              {videoSpike.active() && <p role="status">{videoSpike.state === "capturing" ? "Webcam recording" : videoSpike.state === "attention" ? "Video upload interrupted — keep this tab open" : videoSpike.state === "processing" ? "Video uploaded; playback is being checked" : "Saving video…"}</p>}
+              {videoSpike.active() && <p role="status">{videoSpike.state === "capturing" ? "Webcam recording" : videoSpike.state === "stopped" ? "Webcam stopped. Your interview is still being saved." : videoSpike.state === "attention" ? "Video upload interrupted — keep this tab open" : videoSpike.state === "processing" ? "Video uploaded; playback is being checked" : "Saving video…"}</p>}
               {!voice.isConnected && !preview && !locallyCompleted && (
                 <Button
                   size="lg"
