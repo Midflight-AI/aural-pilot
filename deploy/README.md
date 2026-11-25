@@ -22,7 +22,7 @@ Build remotely with `docker build -f deploy/relay.Dockerfile .`. Runtime port is
 
 Web build variables select the relay with `NEXT_PUBLIC_VOICE_RELAY_PRIMARY=openai` and `NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL=wss://<protected relay hostname>`.
 
-Report generation needs its own configured text-model deployment/provider; the voice model does not produce Aural reports by itself. No provider keys are stored in this repository.
+Report generation needs its own configured text-model deployment/provider; the voice model does not produce Aural reports by itself. Reports use the Azure deployment named `gpt-5.5` unless `OPENAI_REPORT_MODEL` names another. Every question and criterion score must carry a quote the app finds word for word in the participant's answers, or the score is dropped. No provider keys are stored in this repository.
 
 ## Acceptance
 

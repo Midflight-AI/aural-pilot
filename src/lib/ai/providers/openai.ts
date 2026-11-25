@@ -5,7 +5,7 @@ import { type LLMProvider, type GenerationParams, type LLMResponse, type LLMMess
 export class OpenAIProvider implements LLMProvider {
   id = "openai";
   name = "OpenAI";
-  models = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "o3-mini"];
+  models = ["gpt-5.5", "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "o3-mini"];
   defaultModel = "gpt-4o-mini";
 
   private client: OpenAI;
@@ -15,6 +15,15 @@ export class OpenAIProvider implements LLMProvider {
       apiKey: process.env.OPENAI_API_KEY ?? "",
       baseURL: process.env.OPENAI_BASE_URL,
     });
+  }
+
+  // GPT-5 models reason before answering: they reject a custom temperature, and
+  // their hidden reasoning counts against the token limit, so give it room.
+  private limits(model: string, params: GenerationParams) {
+    const maxTokens = params.maxTokens ?? 2048;
+    return /^gpt-5/i.test(model)
+      ? { max_completion_tokens: maxTokens * 4 }
+      : { temperature: params.temperature ?? 0.7, max_tokens: maxTokens };
   }
 
   private toOpenAIMessages(messages: LLMMessage[]): ChatCompletionMessageParam[] {
@@ -31,8 +40,7 @@ export class OpenAIProvider implements LLMProvider {
     const response = await this.client.chat.completions.create({
       model,
       messages: this.toOpenAIMessages(params.messages),
-      temperature: params.temperature ?? 0.7,
-      max_tokens: params.maxTokens ?? 2048,
+      ...this.limits(model, params),
     });
 
     const choice = response.choices[0];
@@ -56,8 +64,7 @@ export class OpenAIProvider implements LLMProvider {
     const stream = await this.client.chat.completions.create({
       model,
       messages: this.toOpenAIMessages(params.messages),
-      temperature: params.temperature ?? 0.7,
-      max_tokens: params.maxTokens ?? 2048,
+      ...this.limits(model, params),
       stream: true,
     });
 
