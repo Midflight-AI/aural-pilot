@@ -58,6 +58,7 @@ interface UseVoiceOptions {
   interviewId: string;
   sessionId: string;
   interviewContext: InterviewContext;
+  getRecordingSeconds: () => number;
   onTranscript?: (text: string, isFinal: boolean) => void;
   onAIResponse?: (text: string) => void;
   onError?: (error: string) => void;
@@ -86,10 +87,6 @@ interface VoiceState {
   totalQuestions: number;
 }
 
-/** Attribute a turn to the question it was captured on, not the one active when it is saved. */
-function questionAt(ids: Array<string | undefined>, questionIndex: number) {
-  return { questionIndex, questionId: ids[questionIndex] };
-}
 
 interface TrackedMessage {
   questionIndex?: number;
@@ -114,6 +111,7 @@ interface TrackedMessage {
  */
 export function useVoice({
   sessionId,
+  getRecordingSeconds,
   interviewContext,
   onTranscript,
   onAIResponse,
@@ -163,7 +161,6 @@ export function useVoice({
   );
   const isListeningRef = useRef(false);
   const trackedMessagesRef = useRef<TrackedMessage[]>([]);
-  const savedMessageCountRef = useRef(0);
   const flushingPromiseRef = useRef<Promise<void> | null>(null);
   const micHoldUntilRef = useRef(0);
   const bargeInFramesRef = useRef(0);
@@ -202,8 +199,12 @@ export function useVoice({
     interviewContext.startQuestionIndex ?? 0
   );
   const assistantQuestionIndexRef = useRef(currentQuestionIndexRef.current);
-  const openingSentRef = useRef(false);
+  const openingFinishedRef = useRef(false);
+  const recordingClock = useRef(getRecordingSeconds);
   const questionIds = useRef(interviewContext.questions.map(q => q.id));
+  const questionAt = useCallback((questionIndex: number) => questionIndex === -1
+    ? { id: crypto.randomUUID(), questionIndex, introductionEndSeconds: recordingClock.current() }
+    : { id: crypto.randomUUID(), questionIndex, questionId: questionIds.current[questionIndex] }, []);
   const totalQuestionsRef = useRef(interviewContext.questions.length);
   const latestCodeUpdateRef = useRef<{ content: string; language: string } | null>(
     null
@@ -446,7 +447,7 @@ export function useVoice({
     onAIResponseRef.current?.(trimmed);
     trackedMessagesRef.current.push({
       role: "assistant",
-      ...questionAt(questionIds.current, questionIndex),
+      ...questionAt(questionIndex),
       content: trimmed,
     });
     log.debug(`Tracked ASSISTANT (${reason}): "${trimmed.slice(0, 60)}..."`);
@@ -667,9 +668,6 @@ export function useVoice({
         audioContextRef.current = new AudioContext({ sampleRate: 24000 });
       }
 
-      // Reset tracked messages
-      trackedMessagesRef.current = [];
-      savedMessageCountRef.current = 0;
       pendingAssistantPlaybackCommitRef.current = null;
       playbackCommitSessionRef.current = 0;
 
@@ -694,16 +692,14 @@ export function useVoice({
         reconnectAttempts: 2,
         reconnectDelayMs: 1500,
         buildInitMessage: () => {
-          // A reconnect resumes mid-interview, so only the first connection greets.
-          const opening = openingSentRef.current ? null : interviewContext.opening;
-          openingSentRef.current = true;
+          const opening = openingFinishedRef.current ? null : interviewContext.opening;
           return {
             type: "init",
             sessionId,
             context: {
               ...interviewContext,
               opening,
-              startQuestionIndex: currentQuestionIndexRef.current,
+              startQuestionIndex: Math.max(0, currentQuestionIndexRef.current),
             },
           };
         },
@@ -775,29 +771,15 @@ export function useVoice({
     []
   );
 
-  /** Save accumulated messages to the server (incremental, non-completing).
-   *  Called on each question transition so progress is not lost. */
-  const saveProgress = useCallback(
-    async (currentQuestionIndex: number) => {
-      if (flushingPromiseRef.current) {
-        await flushingPromiseRef.current;
-      }
+  /** Periodically flush unsaved tracked messages to the server. */
+  const flushTrackedMessages = useCallback(async (currentQuestionIndex?: number) => {
+    while (flushingPromiseRef.current) await flushingPromiseRef.current;
+    const currentMessages = trackedMessagesRef.current;
+    if (!currentMessages.length && currentQuestionIndex === undefined) return;
 
-      // Flush any remaining ASR buffer (chatBuffer is already cleared
-      // before this is called by the question_change handler).
-      const pendingAsrText = asrBufferRef.current.trim();
-      if (pendingAsrText) {
-        trackedMessagesRef.current.push({ role: "user", ...questionAt(questionIds.current, currentQuestionIndexRef.current), content: pendingAsrText });
-        asrBufferRef.current = "";
-      }
+    const unsaved = currentMessages.slice();
 
-      const start = savedMessageCountRef.current;
-      const unsaved = trackedMessagesRef.current.slice(start);
-      trackedMessagesRef.current = [];
-      savedMessageCountRef.current = 0;
-
-      if (unsaved.length === 0 && typeof currentQuestionIndex !== "number") return;
-
+    const promise = (async () => {
       try {
         const res = await fetch("/api/voice/save", {
           method: "POST",
@@ -811,40 +793,9 @@ export function useVoice({
             return;
           }
         }
-        log.info(
-          `Progress saved: ${unsaved.length} msgs, Q${currentQuestionIndex + 1}`
-        );
-      } catch (err) {
-        log.error("Failed to save progress:", err);
-      }
-    },
-    [sessionId]
-  );
-
-  /** Periodically flush unsaved tracked messages to the server. */
-  const flushTrackedMessages = useCallback(async () => {
-    const currentMessages = trackedMessagesRef.current;
-    const start = savedMessageCountRef.current;
-    if (start >= currentMessages.length) return;
-
-    const unsaved = currentMessages.slice(start);
-
-    const promise = (async () => {
-      try {
-        const res = await fetch("/api/voice/save", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, messages: unsaved }),
-        });
-        if (res.status === 403) {
-          const body = await res.json().catch(() => ({}));
-          if (body.error === "TIME_LIMIT_EXCEEDED") {
-            setState((s) => ({ ...s, timeLimitExceeded: true }));
-            return;
-          }
-        }
+        if (!res.ok) throw new Error(`Message save failed (${res.status})`);
         if (trackedMessagesRef.current === currentMessages) {
-          savedMessageCountRef.current = currentMessages.length;
+          trackedMessagesRef.current = currentMessages.slice(unsaved.length);
         }
         log.info(`Periodic flush: ${unsaved.length} messages saved`);
       } catch (err) {
@@ -1020,7 +971,7 @@ export function useVoice({
               onTranscript?.(finalText, true);
               trackedMessagesRef.current.push({
                 role: "user",
-                ...questionAt(questionIds.current, typeof msg.questionIndex === "number" ? msg.questionIndex : currentQuestionIndexRef.current),
+                ...questionAt(typeof msg.questionIndex === "number" ? msg.questionIndex : currentQuestionIndexRef.current),
                 content: finalText,
               });
               log.debug(
@@ -1165,14 +1116,18 @@ export function useVoice({
           lastOnAIResponseRef.current = "";
           const idx = msg.questionIndex as number;
           const total = msg.totalQuestions as number;
+          if (currentQuestionIndexRef.current === -1) clearResponseWatchdog();
 
           // Persist messages from the previous question (fire-and-forget)
           const pendingAnswer = asrBufferRef.current.trim();
           if (pendingAnswer) {
-            trackedMessagesRef.current.push({ role: "user", ...questionAt(questionIds.current, currentQuestionIndexRef.current), content: pendingAnswer });
+            trackedMessagesRef.current.push({ role: "user", ...questionAt(currentQuestionIndexRef.current), content: pendingAnswer });
             asrBufferRef.current = "";
           }
-          saveProgress(idx);
+          if (idx >= 0) {
+            openingFinishedRef.current = true;
+            void flushTrackedMessages(idx);
+          }
           currentQuestionIndexRef.current = idx;
 
           setState((s) => ({
@@ -1273,7 +1228,8 @@ export function useVoice({
       onTranscript,
       onError,
       onQuestionChange,
-      saveProgress,
+      flushTrackedMessages,
+      questionAt,
       tryCommitAssistantPlayback,
       clearResponseWatchdog,
       clearAsrInterimWatchdog,
@@ -1440,7 +1396,7 @@ export function useVoice({
       const connector = relayConnectorRef.current;
       if (!connector?.isReady) return;
 
-      trackedMessagesRef.current.push({ role: "user", ...questionAt(questionIds.current, currentQuestionIndexRef.current), content: trimmed, source: "chat" });
+      trackedMessagesRef.current.push({ role: "user", ...questionAt(currentQuestionIndexRef.current), content: trimmed, source: "chat" });
       lastSentChatInputRef.current = {
         text: trimmed.replace(/\s+/g, " ").trim().toLowerCase(),
         at: Date.now(),
@@ -1471,21 +1427,20 @@ export function useVoice({
     // Flush any pending buffers before saving
     const pendingAsrText = asrBufferRef.current.trim();
     if (pendingAsrText) {
-      trackedMessagesRef.current.push({ role: "user", ...questionAt(questionIds.current, currentQuestionIndexRef.current), content: pendingAsrText });
+      trackedMessagesRef.current.push({ role: "user", ...questionAt(currentQuestionIndexRef.current), content: pendingAsrText });
       asrBufferRef.current = "";
     }
     const pendingChatText = chatBufferRef.current.trim();
     if (pendingChatText) {
       trackedMessagesRef.current.push({
         role: "assistant",
-        ...questionAt(questionIds.current, assistantQuestionIndexRef.current),
+        ...questionAt(assistantQuestionIndexRef.current),
         content: pendingChatText,
       });
       chatBufferRef.current = "";
     }
 
-    const start = savedMessageCountRef.current;
-    const unsaved = trackedMessagesRef.current.slice(start);
+    const unsaved = trackedMessagesRef.current.slice();
     if (unsaved.length === 0 && !sessionId) return;
 
     log.info(
@@ -1515,8 +1470,7 @@ export function useVoice({
 
   /** Return a JSON payload of unsaved messages for sendBeacon on unload. */
   const getUnsentPayload = useCallback((): string | null => {
-    const start = savedMessageCountRef.current;
-    const unsaved = trackedMessagesRef.current.slice(start);
+    const unsaved = trackedMessagesRef.current.slice();
     if (unsaved.length === 0) return null;
     return JSON.stringify({ sessionId, messages: unsaved });
   }, [sessionId]);

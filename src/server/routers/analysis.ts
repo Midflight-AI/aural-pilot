@@ -116,6 +116,7 @@ export const analysisRouter = router({
         }),
       );
 
+      const introductionRecordingUrl = audioRecordings.find(r => r.segmentIndex === 0)?.url ?? null;
       const { data: recordingObjects } = await supabaseAdmin.storage
         .from("recordings")
         .list(input.sessionId, { limit: 100 });
@@ -147,6 +148,7 @@ export const analysisRouter = router({
         messages: session.messages,
         totalDurationSeconds: recordedSessionDuration(session) ?? session.totalDurationSeconds,
         audioRecordingUrl,
+        introductionRecordingUrl,
         audioRecordings,
         audioDuration: (session as Record<string, unknown>).audioDuration as number | null,
         screenshots,

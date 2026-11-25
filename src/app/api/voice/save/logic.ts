@@ -6,6 +6,8 @@ export type VoiceSavePayload = {
     role: string;
     content: string;
     questionId?: string;
+    id?: string;
+    introductionEndSeconds?: number;
     questionIndex?: number;
     source?: string;
   }>;
@@ -229,6 +231,7 @@ export function sessionQuestionOrder<Q extends SessionQuestion>(questions: Q[]):
 
 /** Resolve capture-time positions against this session's questions, never another interview. */
 export function resolveVoiceQuestionId(message: { questionIndex?: number; questionId?: string }, questions: Array<{ id: string }>): string | null {
+  if (message.questionIndex === -1) return null;
   if (Number.isInteger(message.questionIndex) && message.questionIndex! >= 0) return questions[message.questionIndex!]?.id ?? null;
   return questions.some(q => q.id === message.questionId) ? message.questionId! : null;
 }

@@ -38,3 +38,18 @@ test('an empty-answer transcript can never keep a score',()=>{
  const insights=verifiedInsights({questionEvaluations:[{question:'Workflow',score:7,evidence:['Walk me through your editing workflow']}]},silent,{canScore:true,supporting:[]});
  assert.equal('questionEvaluations' in insights,false);
 });
+
+test('an introduction stays readable and cannot supply evidence for either part of an interview', async () => {
+ const { interviewSections, reportEvidence, hasCandidateAnswers } = await import('../src/lib/report-evidence');
+ const intro = {role:'USER', content:'I cook with my family', introductionEndSeconds:31};
+ const job = {role:'USER', content:'I tested the backup', questionId:'job'};
+ const cv = {role:'USER', content:'I worked on the migration', questionId:'cv'};
+ assert.equal(hasCandidateAnswers([intro]), false);
+ const questions = [{id:'job',text:'How did you test recovery?'}];
+ assert.deepEqual(reportEvidence(questions,[intro,job]).turns,[job]);
+ const withCV = reportEvidence([...questions,{id:'cv',text:'Tell me about the migration.',source:'invite'}],[intro,job,cv]);
+ assert.deepEqual(withCV.turns,[job]);
+ assert.equal(withCV.supporting.length,1);
+ assert.ok(!withCV.supporting[0].includes(intro.content));
+ assert.deepEqual(interviewSections([intro,job,cv]),{introduction:[intro],messages:[job,cv]});
+});

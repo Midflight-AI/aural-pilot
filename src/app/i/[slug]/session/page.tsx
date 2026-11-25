@@ -198,7 +198,7 @@ export default function SlugSessionPage() {
       language: interview.data.language,
       followUpDepth: interview.data.followUpDepth,
       startQuestionIndex: resume.hasQuestion ? resume.questionIndex : undefined,
-      opening: resume.isResuming ? null : renderOpening(interview.data.opening, {
+      opening: !resume.awaitingIntroduction ? null : renderOpening(interview.data.opening, {
         participantName: session.data.participantName,
         title: interview.data.title,
         aiName: interview.data.aiName,

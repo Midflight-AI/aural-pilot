@@ -124,3 +124,25 @@ test('structured planner rejects missing information and malformed decisions',as
  assert.throws(()=>validateIntroductionPlan({action:'unknown',question:'',recognition:'',missingDetail:''}));
  assert.deepEqual(validateIntroductionPlan({action:'advance',question:'',recognition:'You initiated the investigation.',missingDetail:''}),{action:'advance',question:'',recognition:'You initiated the investigation.',missingDetail:''});
 });
+
+test('an introduction or a spoken skip starts the first approved question exactly once', () => {
+ for (const answer of ['I enjoy hiking', 'Skip to the next question']) {
+  const body = `
+   let awaitingIntroduction = true, questionEnteredAt = 0, introductionRecognition = "";
+   const ctx = {opening:"Introduce yourself"}, sortedQuestions = [{text:"What did you deliver?"}];
+   const sent = [], replies = [];
+   const send = event => sent.push(event);
+   const requestAssistantResponse = (reason, response) => replies.push(response);
+   ${callback('startFirstQuestion')}
+   ${callback('handleCommittedUserText')}
+   handleCommittedUserText(answer,"voice");
+   return {awaitingIntroduction, sent, replies};
+  `;
+  const run = new Function('answer',ts.transpileModule(body,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText);
+  const result = run(answer);
+  assert.equal(result.awaitingIntroduction,false);
+  assert.deepEqual(result.sent,[{type:'question_change',questionIndex:0,totalQuestions:1,auto:true}]);
+  assert.equal(result.replies.length,1);
+  assert.ok(result.replies[0].instructions.includes('What did you deliver?'));
+ }
+});

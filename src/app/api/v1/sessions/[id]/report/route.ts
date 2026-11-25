@@ -1,3 +1,4 @@
+import { interviewSections } from "@/lib/report-evidence";
 import { validateApiKey, isAuthError, apiError } from "@/lib/api-key-auth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { analysisRouter } from "@/server/routers/analysis";
@@ -15,6 +16,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (access instanceof Response) return access;
   try {
     const caller = analysisRouter.createCaller(await apiCallerContext(auth));
-    return Response.json({ data: await caller.getSessionSummary({ sessionId: id }) });
+    const report = await caller.getSessionSummary({ sessionId: id });
+    return Response.json({ data: { ...report, ...interviewSections(report.messages ?? []) } });
   } catch (error) { return apiCallerError(error); }
 }

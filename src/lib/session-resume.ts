@@ -13,6 +13,7 @@ export interface ResumeMessage {
   role: string;
   content: string;
   contentType?: string | null;
+  introductionEndSeconds?: number | null;
   whiteboardData?: unknown;
   timestamp?: string | number | Date | null;
 }
@@ -39,6 +40,7 @@ export interface ResumeDrawing {
 export interface SessionResumeState {
   /** True once the session has any stored message, i.e. this is a re-entry rather than a first visit. */
   isResuming: boolean;
+  awaitingIntroduction: boolean;
   /** Index into the interview's questions to resume at. */
   questionIndex: number;
   /** False when nothing pinned a question, so callers can leave the interface on its own default. */
@@ -122,6 +124,7 @@ export function buildSessionResumeState(input: {
 
   return {
     isResuming: messages.length > 0,
+    awaitingIntroduction: messages.every(m => m.introductionEndSeconds != null && m.role.toLowerCase() === "assistant"),
     questionIndex: resolvedIdx >= 0 ? resolvedIdx : 0,
     hasQuestion: Boolean(input.currentQuestionId || input.fallbackQuestionId),
     voiceMessages,

@@ -237,3 +237,11 @@ test("an interview with no questions loaded does not throw", () => {
   assert.equal(resume.questionIndex, 0);
   assert.equal(resume.hasQuestion, true);
 });
+
+test('a lost connection repeats an unanswered welcome, then resumes after a saved introduction', () => {
+  const welcome = {id:'welcome',role:'ASSISTANT',content:'Tell me about yourself',introductionEndSeconds:7};
+  const reply = {id:'reply',role:'USER',content:'I like cooking',introductionEndSeconds:19};
+  assert.equal(buildSessionResumeState({messages:[welcome]}).awaitingIntroduction,true);
+  assert.equal(buildSessionResumeState({messages:[welcome,reply]}).awaitingIntroduction,false);
+  assert.equal(buildSessionResumeState({messages:[{...welcome,introductionEndSeconds:null}]}).awaitingIntroduction,false);
+});

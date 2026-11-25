@@ -763,6 +763,7 @@ export function VoiceInterface({
     onTranscript: handleTranscript,
     onAIResponse: handleAIResponse,
     onError: handleError,
+    getRecordingSeconds: recording.getRecordingSeconds,
     onTtsChunk: recording.addTtsChunk,
     onMicStream: recording.attachMicStream,
     onInterrupt: recording.cancelTts,
@@ -1352,6 +1353,7 @@ export function VoiceInterface({
             saveRecordingMetadata({
               audioRecordingUrl: result.audioUrl,
               audioDuration: result.audioDuration,
+              ...(interviewContext.opening ? { segmentIndex: 0 } : {}),
               screenshots: result.screenshots,
             }),
             8000,
@@ -1736,7 +1738,7 @@ export function VoiceInterface({
         <div className="mt-2 flex items-center gap-3">
           <Progress value={progress} className="h-1.5 flex-1" />
           <span className="shrink-0 text-xs font-medium text-muted-foreground">
-            Q{voice.currentQuestionIndex + 1} / {voice.totalQuestions}
+            {voice.currentQuestionIndex < 0 ? "Introduction" : `Q${voice.currentQuestionIndex + 1} / ${voice.totalQuestions}`}
           </span>
           {remainingSeconds !== null && isMobile && (
             <div className={`flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium tabular-nums ${isTimeLow ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}>
