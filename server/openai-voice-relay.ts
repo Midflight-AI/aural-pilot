@@ -1,5 +1,5 @@
 import { isIntroductionReply } from "../src/lib/interview-opening";
-import { synthesizeOpenAiSpeech } from "../src/lib/voice/openai-tts";
+import { DEFAULT_TTS_DEPLOYMENT, synthesizeOpenAiSpeech } from "../src/lib/voice/openai-tts";
 import { planIntroductionTurn } from "./introduction-planner";
 import { introductionStyle, introductionPrompt, introductionTurnAction, introductionEvidence, transitionAllowed } from "./introduction-voice-policy";
 import { waitForRealtimeEvent } from "./realtime-handshake";
@@ -7,15 +7,10 @@ import { relayBackup } from "./relay-backup";
 import { relayObservations } from "./relay-observability";
 import { verifyRelayTicket } from "../src/lib/voice/relay-ticket";
 /**
- * Backup voice relay using Azure OpenAI Realtime API (gpt-realtime-1.5).
- *
- * Browser ←→ this relay ←→ Azure OpenAI Realtime API
- *
- * Primary relay: server/voice-relay.ts (Volcengine S2S).
- * Run this as an alternative:  npm run dev:openai-voice
+ * Aural's voice relay: Browser ←→ this relay ←→ Azure OpenAI Realtime API.
+ * Run locally with `npm run dev:voice`.
  */
 
-import { randomUUID } from "crypto";
 import { createServer } from "node:http";
 import { config } from "dotenv";
 import { WebSocket, WebSocketServer } from "ws";
@@ -35,14 +30,6 @@ import {
   shouldAllowTtsBargeIn,
   shouldSendFollowUpLimitNotice,
 } from "./openai-voice-relay-helpers";
-import {
-  type BigModelAsrConfig,
-  BIGMODEL_ASR_URL,
-  buildBigModelAudioRequest,
-  buildBigModelFullRequest,
-  buildBigModelHeaders,
-  parseAsrResponse,
-} from "./volcengine-asr";
 
 const log = createLogger("openai-relay");
 
@@ -67,14 +54,6 @@ if (!AZURE_ENDPOINT || !AZURE_API_KEY) {
   log.error("Missing AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_API_KEY in .env.local");
   process.exit(1);
 }
-
-// ── Volcengine Big-Model streaming ASR config ───────────────────────
-const VOLC_ASR_APPID = process.env.DOUBAO_APP_ID || "";
-const VOLC_ASR_TOKEN = process.env.DOUBAO_ACCESS_TOKEN || "";
-const VOLC_ASR_AVAILABLE = !!(VOLC_ASR_APPID && VOLC_ASR_TOKEN);
-const ASR_PRIMARY = (process.env.VOICE_ASR_PRIMARY || "openai").toLowerCase();
-const USE_VOLC_ASR_PRIMARY = VOLC_ASR_AVAILABLE && ASR_PRIMARY === "volc";
-const USE_VOLC_ASR_INTERIMS = VOLC_ASR_AVAILABLE;
 
 // Minimum RMS energy for user audio to be forwarded. 16-bit PCM silence is 0;
 // typical speech is 500-5000. A threshold of 200 filters ambient noise while
@@ -145,8 +124,8 @@ function mergeAsrText(previous: string, incoming: string): string {
   if (next.length + 8 < prev.length) return prev;
 
   // Distinct segments in the same speaking turn (e.g. ASR finalized twice, or
-  // Volc + Whisper partials that are not substring-related). Concatenate so the
-  // model and Volc context see the full user turn instead of losing the shorter half.
+  // two transcription partials that are not substring-related). Concatenate so the
+  // model sees the full user turn instead of losing the shorter half.
   return `${prev} ${next}`.replace(/\s+/g, " ").trim();
 }
 
@@ -414,16 +393,10 @@ const httpServer = createServer((request, response) => {
   response.end(JSON.stringify({ status: request.url === "/healthz" ? "ok" : "not_found" }));
 });
 const wss = new WebSocketServer({ server: httpServer, maxPayload: 256 * 1024 });
-httpServer.listen(RELAY_PORT);
+httpServer.listen(RELAY_PORT, process.env.VOICE_RELAY_HOST || undefined);
 log.info(`OpenAI voice relay listening on ws://localhost:${RELAY_PORT}`);
 log.info(`Deployment: ${AZURE_DEPLOYMENT}, Voice: ${AZURE_VOICE}`);
-log.info(
-  `ASR: ${USE_VOLC_ASR_PRIMARY ? "Volcengine primary" : "OpenAI primary"}`
-  + ` (OpenAI transcription model: ${OPENAI_REALTIME_TRANSCRIPTION_MODEL}; `
-  + `${USE_VOLC_ASR_INTERIMS
-    ? (USE_VOLC_ASR_PRIMARY ? "Volcengine primary" : "Volcengine interims enabled")
-    : "Volcengine unavailable"})`
-);
+log.info(`Transcription model: ${OPENAI_REALTIME_TRANSCRIPTION_MODEL}`);
 
 wss.on("connection", (browserWs) => {
   log.info("Browser connected, waiting for init...");
@@ -470,13 +443,9 @@ wss.on("connection", (browserWs) => {
 // ── Mic test handler ────────────────────────────────────────────────
 
 async function handleMicTest(browserWs: WebSocket) {
-  log.info(`Mic test mode (${USE_VOLC_ASR_PRIMARY ? "Volcengine" : "OpenAI"})`);
+  log.info("Mic test mode");
 
   let oaiWs: WebSocket | null = null;
-  let volcWs: WebSocket | null = null;
-  let volcAlive = false;
-  let volcAudioSeq = 1;
-  let volcKeepAliveTimer: ReturnType<typeof setInterval> | null = null;
 
   const autoTimeout = setTimeout(() => {
     log.info("Mic test auto-timeout");
@@ -487,94 +456,8 @@ async function handleMicTest(browserWs: WebSocket) {
 
   function cleanup() {
     clearTimeout(autoTimeout);
-    if (volcKeepAliveTimer) { clearInterval(volcKeepAliveTimer); volcKeepAliveTimer = null; }
-    if (volcWs && volcWs.readyState === WebSocket.OPEN) {
-      try {
-        volcAudioSeq++;
-        volcWs.send(buildBigModelAudioRequest(Buffer.alloc(0), volcAudioSeq, true));
-      } catch { /* ignore */ }
-    }
-    volcWs?.close();
-    volcWs = null;
-    volcAlive = false;
     oaiWs?.close();
     oaiWs = null;
-  }
-
-  async function connectMicTestVolcAsr() {
-    const reqid = randomUUID().replace(/-/g, "");
-    const asrConfig: BigModelAsrConfig = {
-      format: "pcm", rate: 16000, bits: 16, channels: 1, codec: "raw",
-      showUtterance: true, resultType: "full", enablePunc: true,
-      endWindowSize: 800, forceToSpeechTime: 3000,
-      enableNonstream: true, ssdVersion: "200",
-    };
-
-    const wsHeaders = buildBigModelHeaders(VOLC_ASR_APPID, VOLC_ASR_TOKEN, reqid);
-    volcWs = new WebSocket(BIGMODEL_ASR_URL, { headers: wsHeaders });
-
-    await new Promise<void>((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("Volcengine ASR connect timeout")), 10_000);
-      volcWs!.on("open", () => { clearTimeout(t); resolve(); });
-      volcWs!.on("error", (e) => { clearTimeout(t); reject(e); });
-    });
-
-    let micAsrAccum = "";
-    volcWs.on("message", (data: Buffer) => {
-      try {
-        const resp = parseAsrResponse(Buffer.from(data));
-        if (resp.messageType === 0x0b) {
-          if (!volcAlive) { volcAlive = true; log.info("Mic test Volcengine ASR connected"); }
-          return;
-        }
-        if (resp.errorCode || (resp.code && resp.code !== 1000)) {
-          log.warn(`Mic test Volc ASR error: code=${resp.code || resp.errorCode}`);
-          return;
-        }
-        if (!volcAlive) return;
-
-        if (resp.utterances?.length) {
-          const utt = resp.utterances[0];
-          if (utt.text) {
-            micAsrAccum = utt.text;
-            if (browserWs.readyState === WebSocket.OPEN) {
-              browserWs.send(JSON.stringify({ type: "asr", data: { results: [{ text: micAsrAccum }] } }));
-            }
-          }
-          if (utt.definite && micAsrAccum.trim()) {
-            log.info(`Mic test ASR: ${JSON.stringify(micAsrAccum.trim())}`);
-            if (browserWs.readyState === WebSocket.OPEN) {
-              browserWs.send(JSON.stringify({ type: "asr_ended" }));
-            }
-            micAsrAccum = "";
-          }
-        } else if (resp.text) {
-          micAsrAccum = resp.text;
-          if (browserWs.readyState === WebSocket.OPEN) {
-            browserWs.send(JSON.stringify({ type: "asr", data: { results: [{ text: micAsrAccum }] } }));
-          }
-          if (resp.isLastPackage && micAsrAccum.trim()) {
-            log.info(`Mic test ASR final: ${JSON.stringify(micAsrAccum.trim())}`);
-            if (browserWs.readyState === WebSocket.OPEN) {
-              browserWs.send(JSON.stringify({ type: "asr_ended" }));
-            }
-            micAsrAccum = "";
-          }
-        }
-      } catch (err) { log.error("Mic test Volc ASR parse error:", err); }
-    });
-
-    volcWs.send(buildBigModelFullRequest(asrConfig, reqid));
-    volcAlive = true;
-
-    volcWs.on("close", () => { volcAlive = false; });
-    volcWs.on("error", (err: Error) => { log.error("Mic test Volc ASR error:", err.message); });
-
-    volcKeepAliveTimer = setInterval(() => {
-      if (!volcAlive || !volcWs || volcWs.readyState !== WebSocket.OPEN) return;
-      volcAudioSeq++;
-      volcWs.send(buildBigModelAudioRequest(Buffer.alloc(3200), volcAudioSeq));
-    }, 5_000);
   }
 
   async function connectMicTestOpenAI() {
@@ -646,11 +529,7 @@ async function handleMicTest(browserWs: WebSocket) {
   browserWs.once("close", cleanup);
 
   try {
-    if (USE_VOLC_ASR_PRIMARY) {
-      await connectMicTestVolcAsr();
-    } else {
-      await connectMicTestOpenAI();
-    }
+    await connectMicTestOpenAI();
 
     browserWs.send(JSON.stringify({ type: "ready" }));
 
@@ -660,11 +539,6 @@ async function handleMicTest(browserWs: WebSocket) {
         const msg = JSON.parse(data.toString());
         if (msg.type !== "audio" || !msg.data) return;
         const pcm16k = Buffer.from(msg.data, "hex");
-
-        if (volcAlive && volcWs && volcWs.readyState === WebSocket.OPEN) {
-          volcAudioSeq++;
-          volcWs.send(buildBigModelAudioRequest(pcm16k, volcAudioSeq));
-        }
 
         if (oaiWs && oaiWs.readyState === WebSocket.OPEN) {
           const pcm24k = resample16to24(pcm16k);
@@ -782,7 +656,6 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
 
   let latestCode = "";
   let latestCodeLanguage = "plaintext";
-  let openAiTranscriptionEnabled = true;
   let pendingSpeechFinalize: ReturnType<typeof setTimeout> | null = null;
   let speechTranscriptCommitted = false;
   let responseInFlight = false;
@@ -989,7 +862,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
       introductionSpeechAbort = controller;
       responseInFlight = true;
       clearQuestionPrompt();
-      void synthesizeOpenAiSpeech(speech,"pcm",controller.signal,fetch,{base:AZURE_ENDPOINT.replace(/^wss:/,"https:")+"/openai/v1/",key:AZURE_API_KEY,model:process.env.AURAL_INTRODUCTION_TTS_MODEL ?? "aural-pilot-tts"})
+      void synthesizeOpenAiSpeech(speech,"pcm",controller.signal,fetch,{base:AZURE_ENDPOINT.replace(/^wss:/,"https:")+"/openai/v1/",key:AZURE_API_KEY,model:process.env.AURAL_INTRODUCTION_TTS_MODEL ?? DEFAULT_TTS_DEPLOYMENT})
         .then(async audio=>{
           if(controller.signal.aborted || browserClosed)return;
           modelIsSpeaking = true;
@@ -1162,7 +1035,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
   }
 
   function bestAvailableTranscript(): string {
-    return mergeAsrText(inputTranscriptBuffer, volcAsrAccumulator).trim();
+    return inputTranscriptBuffer.trim();
   }
 
   function noteTranscriptUpdate() {
@@ -1192,7 +1065,6 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     send({ type: "asr_ended", text: committedText, questionIndex: awaitingIntroduction ? -1 : currentQuestionIndex });
     log.info(`Committed user transcript (${reason}): ${JSON.stringify(committedText)}`);
     inputTranscriptBuffer = "";
-    volcAsrAccumulator = "";
     lastTranscriptUpdateAt = 0;
     armStaleAsrGuard(committedText);
     return committedText;
@@ -1230,7 +1102,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
 
   function tryAcceptFreshAsrText(text: string, label: string): boolean {
     if (speechTranscriptCommitted) return false;
-    if (!inputTranscriptBuffer && !volcAsrAccumulator && shouldIgnoreStaleAsrText(text)) {
+    if (!inputTranscriptBuffer && shouldIgnoreStaleAsrText(text)) {
       log.debug(`Ignored stale ${label}: ${JSON.stringify(text)}`);
       return false;
     }
@@ -1238,33 +1110,8 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     return true;
   }
 
-  function emitInterimUserTranscript(text: string, allowWhenVolcSilent = false) {
-    if (allowWhenVolcSilent && volcAsrAccumulator.trim()) return;
+  function emitInterimUserTranscript(text: string) {
     send({ type: "asr", data: { results: [{ text }] } });
-  }
-
-  function handleVolcInterimText(text: string, label: string) {
-    if (!tryAcceptFreshAsrText(text, label)) return;
-    volcAsrAccumulator = mergeAsrText(volcAsrAccumulator, text);
-    noteTranscriptUpdate();
-    emitInterimUserTranscript(volcAsrAccumulator);
-  }
-
-  function handleVolcFinalText(reason: string, logLabel: string) {
-    const userText = bestAvailableTranscript();
-    if (userText && !volcAsrPreFlushed) {
-      if (USE_VOLC_ASR_PRIMARY) {
-        log.info(`${logLabel}: ${JSON.stringify(userText)}`);
-        finalizeUserTurn(reason);
-      } else {
-        log.debug(`${logLabel} (interim-only): ${JSON.stringify(userText)}`);
-        noteTranscriptUpdate();
-        emitInterimUserTranscript(userText);
-      }
-    } else if (userText) {
-      log.debug(`${logLabel} (skipped${volcAsrPreFlushed ? ", pre-flushed" : ""}${speechTranscriptCommitted ? ", committed" : ""}): ${JSON.stringify(userText)}`);
-    }
-    volcAsrPreFlushed = false;
   }
 
   function handleWhisperDelta(delta: string) {
@@ -1274,7 +1121,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     if (pendingAsrUpdate) clearTimeout(pendingAsrUpdate);
     pendingAsrUpdate = setTimeout(() => {
       pendingAsrUpdate = null;
-      emitInterimUserTranscript(inputTranscriptBuffer, true);
+      emitInterimUserTranscript(inputTranscriptBuffer);
     }, 150);
     if (pendingInputFlush) scheduleInputFlush();
   }
@@ -1293,7 +1140,7 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     noteTranscriptUpdate();
     if (pendingAsrUpdate) clearTimeout(pendingAsrUpdate);
     pendingAsrUpdate = null;
-    emitInterimUserTranscript(inputTranscriptBuffer, true);
+    emitInterimUserTranscript(inputTranscriptBuffer);
     scheduleInputFlush();
   }
 
@@ -1315,7 +1162,6 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     lastTranscriptUpdateAt = 0;
     if (speechTranscriptCommitted) {
       speechTranscriptCommitted = false;
-      volcAsrAccumulator = "";
       inputTranscriptBuffer = "";
     }
     send({ type: "interrupt" });
@@ -1335,20 +1181,12 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     if (!speechTranscriptCommitted && bestAvailableTranscript()) {
       const pendingUserText = bestAvailableTranscript();
       if (transcriptLooksStable()) {
-        volcAsrPreFlushed = true;
         log.info(`ASR pre-flush: ${JSON.stringify(pendingUserText)}`);
         finalizeUserTurn("response pre-flush");
       } else {
         log.info(`ASR pre-flush deferred: ${JSON.stringify(pendingUserText)}`);
         scheduleSpeechFinalize("response pre-flush", USER_TRANSCRIPT_STABILITY_MS);
       }
-      return;
-    }
-
-    if (volcAsrAccumulator.trim()) {
-      log.debug(`Volc ASR pre-flush skipped (already committed): ${JSON.stringify(volcAsrAccumulator.trim())}`);
-      volcAsrAccumulator = "";
-      volcAsrPreFlushed = true;
     }
   }
 
@@ -1366,40 +1204,6 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     };
   }
 
-  function setOpenAiTranscriptionEnabled(enabled: boolean, reason: string) {
-    // Keep OpenAI transcription active unless Volcengine is explicitly
-    // the primary ASR and healthy.
-    if (!enabled) {
-      log.info(`OpenAI transcription kept warm (${reason})`);
-      return;
-    }
-    if (openAiTranscriptionEnabled === enabled) return;
-    openAiTranscriptionEnabled = enabled;
-    log.info(`OpenAI transcription ${enabled ? "enabled" : "disabled"} (${reason})`);
-
-    if (!oaiWs || oaiWs.readyState !== WebSocket.OPEN) return;
-    oaiWs.send(JSON.stringify({
-      type: "session.update",
-      session: {
-        type: "realtime",
-        audio: {
-          input: enabled
-            ? buildRealtimeAudioInputConfig()
-            : {
-                format: { type: "audio/pcm", rate: 24000 },
-                noise_reduction: { type: "far_field" },
-                turn_detection: {
-                  type: "semantic_vad",
-                  eagerness: "low",
-                  create_response: false,
-                  interrupt_response: true,
-                },
-              },
-        },
-      },
-    }));
-  }
-
   function markInterviewComplete(reason: string) {
     if (!pendingInterviewComplete) return;
     pendingInterviewComplete = false;
@@ -1410,195 +1214,6 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     send({ type: "interview_complete" });
     log.info(`Interview complete (${reason})`);
   }
-
-  // ── ASR context for Volcengine deep reasoning ───────────────────────
-
-  function buildAsrContext(): Record<string, unknown> | undefined {
-    const contextData: { text: string }[] = [];
-
-    const currentQ = sortedQuestions[currentQuestionIndex];
-    if (currentQ) {
-      contextData.push({ text: `Interview topic: ${ctx.title}` });
-      contextData.push({
-        text: `Active question (${currentQuestionIndex + 1}/${sortedQuestions.length}): ${currentQ.text}`,
-      });
-    }
-
-    const recentHistory = conversationHistory.slice(-12);
-    for (const entry of recentHistory) {
-      const who = entry.role === "user" ? "Participant" : "Interviewer";
-      contextData.push({ text: `${who}: ${entry.text}` });
-    }
-
-    if (contextData.length === 0) return undefined;
-    return {
-      context: JSON.stringify({
-        context_type: "dialog_ctx",
-        context_data: contextData,
-      }),
-    };
-  }
-
-  // ── Volcengine Big-Model streaming ASR ──────────────────────────────
-  let volcWs: WebSocket | null = null;
-  let volcAlive = false;
-  let volcAsrAccumulator = "";
-  let volcAsrPreFlushed = false;
-  let volcKeepAliveTimer: ReturnType<typeof setInterval> | null = null;
-  let volcSessionErrorLogged = false;
-  let volcAudioSeq = 1;
-
-  async function connectVolcAsr() {
-    if (!USE_VOLC_ASR_INTERIMS) return;
-    if (volcKeepAliveTimer) { clearInterval(volcKeepAliveTimer); volcKeepAliveTimer = null; }
-    try {
-      const reqid = randomUUID().replace(/-/g, "");
-      volcAudioSeq = 1;
-
-      const asrConfig: BigModelAsrConfig = {
-        format: "pcm",
-        rate: 16000,
-        bits: 16,
-        channels: 1,
-        codec: "raw",
-        showUtterance: true,
-        resultType: "full",
-        enablePunc: true,
-        endWindowSize: 800,
-        forceToSpeechTime: 3000,
-        enableNonstream: true,
-        ssdVersion: "200",
-        corpus: buildAsrContext(),
-      };
-
-      const wsHeaders = buildBigModelHeaders(VOLC_ASR_APPID, VOLC_ASR_TOKEN, reqid);
-      volcWs = new WebSocket(BIGMODEL_ASR_URL, { headers: wsHeaders });
-
-      await new Promise<void>((resolve, reject) => {
-        const t = setTimeout(() => reject(new Error("Volcengine ASR connect timeout")), 10_000);
-        volcWs!.on("open", () => { clearTimeout(t); resolve(); });
-        volcWs!.on("error", (e) => { clearTimeout(t); reject(e); });
-      });
-
-      // Register message handler BEFORE sending the init request so we
-      // don't miss the ACK or an early error.
-      volcWs.on("message", (data: Buffer) => {
-        try {
-          const resp = parseAsrResponse(Buffer.from(data));
-
-          // SERVER_ACK (0x0b) confirms the init or an audio chunk — mark alive on first one
-          if (resp.messageType === 0x0b) {
-            if (!volcAlive) {
-              volcAlive = true;
-              log.info("Volcengine Big-Model ASR connected (ACK received)");
-              if (USE_VOLC_ASR_PRIMARY) {
-                setOpenAiTranscriptionEnabled(false, "Volcengine ASR connected");
-              }
-            }
-            return;
-          }
-
-          if (resp.errorCode || (resp.code && resp.code !== 1000)) {
-            const code = resp.code || resp.errorCode;
-            const isSessionDead = code === 45000081 || code === 55000000;
-            if (!isSessionDead || !volcSessionErrorLogged) {
-              log.warn(`Volcengine ASR error: code=${code} ${resp.message || resp.errorMessage || ""}`);
-              if (isSessionDead) volcSessionErrorLogged = true;
-            }
-            if (!volcAlive) {
-              volcAlive = false;
-              setOpenAiTranscriptionEnabled(true, `Volcengine ASR error ${code}`);
-              volcWs?.close();
-            } else if (isSessionDead) {
-              log.warn("Volcengine ASR session expired — reconnecting...");
-              volcAlive = false;
-              volcSessionErrorLogged = false;
-              setOpenAiTranscriptionEnabled(true, "Volcengine ASR session expired");
-              volcWs?.close();
-            }
-            return;
-          }
-
-          if (!volcAlive) return;
-
-          if (resp.utterances && resp.utterances.length > 0) {
-            const utt = resp.utterances[0];
-            if (utt.text && !volcAsrPreFlushed) {
-              handleVolcInterimText(utt.text, "Volc ASR");
-            }
-            if (utt.definite) {
-              handleVolcFinalText("volc definite", "Volc ASR");
-            }
-          } else if (resp.text && !volcAsrPreFlushed) {
-            handleVolcInterimText(resp.text, "Volc ASR final");
-
-            if (resp.isLastPackage) {
-              handleVolcFinalText("volc final", "Volc ASR final");
-            }
-          }
-        } catch (err) {
-          log.error("Volcengine ASR parse error:", err);
-        }
-      });
-
-      volcWs.send(buildBigModelFullRequest(asrConfig, reqid));
-
-      // Mark alive optimistically — the message handler above will set
-      // volcAlive=true on ACK or false on error.  Audio forwarding
-      // checks volcAlive so it's safe to start sending immediately.
-      volcAlive = true;
-
-      volcWs.on("close", () => {
-        volcAlive = false;
-        setOpenAiTranscriptionEnabled(true, "Volcengine ASR closed");
-        if (!browserClosed && !interviewDone) reconnectVolcAsr();
-      });
-
-      volcWs.on("error", (err: Error) => {
-        log.error("Volcengine ASR WS error:", err.message);
-      });
-
-      volcKeepAliveTimer = setInterval(() => {
-        if (!volcAlive || !volcWs || volcWs.readyState !== WebSocket.OPEN) return;
-        volcAudioSeq++;
-        volcWs.send(buildBigModelAudioRequest(Buffer.alloc(3200), volcAudioSeq));
-      }, 5_000);
-
-      log.info("Volcengine Big-Model ASR WebSocket open, waiting for ACK...");
-    } catch (err) {
-      log.error("Volcengine ASR connection failed:", err instanceof Error ? err.message : err);
-      volcAlive = false;
-      setOpenAiTranscriptionEnabled(true, "Volcengine ASR connection failed");
-    }
-  }
-
-  function reconnectVolcAsr() {
-    if (browserClosed || interviewDone) return;
-    setTimeout(() => connectVolcAsr(), 2_000);
-  }
-
-  function cleanupVolcAsr() {
-    volcAlive = false;
-    setOpenAiTranscriptionEnabled(true, "Volcengine ASR cleanup");
-    if (volcKeepAliveTimer) { clearInterval(volcKeepAliveTimer); volcKeepAliveTimer = null; }
-    if (volcWs && volcWs.readyState === WebSocket.OPEN) {
-      try {
-        volcAudioSeq++;
-        volcWs.send(buildBigModelAudioRequest(Buffer.alloc(0), volcAudioSeq, true));
-      } catch { /* ignore */ }
-    }
-    volcWs?.close();
-    volcWs = null;
-  }
-
-  function sendAudioToVolc(pcm16kBuf: Buffer) {
-    if (!volcAlive || !volcWs || volcWs.readyState !== WebSocket.OPEN) return;
-    volcAudioSeq++;
-    volcWs.send(buildBigModelAudioRequest(pcm16kBuf, volcAudioSeq));
-  }
-
-  // Start Volcengine Big-Model ASR
-  connectVolcAsr();
 
   // Keepalive: 100ms silence at 24kHz (24000 * 0.1 * 2 bytes = 4800 bytes)
   let lastAudioSentToOai = Date.now();
@@ -1664,22 +1279,21 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
             responseInFlight = true;
             break;
 
-          // ── ASR events (OpenAI Whisper fallback only) ──
+          // ── ASR events ──
           case "conversation.item.input_audio_transcription.delta": {
-            if (!openAiTranscriptionEnabled || speechTranscriptCommitted) break;
+            if (speechTranscriptCommitted) break;
             handleWhisperDelta(msg.delta || "");
             break;
           }
 
           case "conversation.item.input_audio_transcription.failed": {
-            if (!openAiTranscriptionEnabled) break;
             const errMsg = msg.error?.message || JSON.stringify(msg.error);
             log.error(`ASR transcription failed: ${errMsg}`);
             break;
           }
 
           case "conversation.item.input_audio_transcription.completed": {
-            if (!openAiTranscriptionEnabled || speechTranscriptCommitted) break;
+            if (speechTranscriptCommitted) break;
             handleWhisperCompletedTranscript(msg.transcript || "");
             break;
           }
@@ -2110,7 +1724,6 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
     clearPendingTransition();
     queuedAssistantResponse = null;
     clearQuestionPrompt();
-    cleanupVolcAsr();
     if (pendingInputFlush) clearTimeout(pendingInputFlush);
     if (pendingAsrUpdate) clearTimeout(pendingAsrUpdate);
     if (interviewCompleteTimer) clearTimeout(interviewCompleteTimer);
@@ -2347,9 +1960,6 @@ async function handleInterview(browserWs: WebSocket, ctx: InterviewContext, sess
             type: "input_audio_buffer.append",
             audio: pcm24k.toString("base64"),
           }));
-        }
-        if ((!inEchoCooldown || allowBargeInDuringTts) && aboveNoiseFloor) {
-          sendAudioToVolc(pcm16k);
         }
         } else if (msg.type === "text_input" && msg.content) {
           // The browser watchdog may replay after eight seconds. A bounded planner/TTS

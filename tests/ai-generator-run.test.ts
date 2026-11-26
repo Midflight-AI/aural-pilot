@@ -9,9 +9,6 @@ import {
 const ENV_KEYS = [
   "OPENAI_API_KEY",
   "OPENAI_GENERATOR_MODEL",
-  "GEMINI_API_KEY",
-  "KIMI_API_KEY",
-  "MINIMAX_API_KEY",
 ] as const;
 
 function withEnv(
@@ -37,62 +34,18 @@ function withEnv(
   }
 }
 
-test("getGeneratorModelChain prefers OpenAI, then Gemini, Kimi, and MiniMax", () => {
-  withEnv(
-    {
-      OPENAI_API_KEY: "test-openai",
-      GEMINI_API_KEY: "test-gemini",
-      KIMI_API_KEY: "test-kimi",
-      MINIMAX_API_KEY: "test-minimax",
-    },
-    () => {
-      assert.deepEqual(getGeneratorModelChain(), [
-        "gpt-4o-mini",
-        "gemini-3.1-flash-lite",
-        "moonshot-v1-8k",
-        "MiniMax-M2.1-lightning",
-      ]);
-      assert.equal(resolveGeneratorModel(), "gpt-4o-mini");
-    },
-  );
-});
-
-test("getGeneratorModelChain uses Gemini when OpenAI is not configured", () => {
-  withEnv(
-    {
-      OPENAI_API_KEY: undefined,
-      GEMINI_API_KEY: "test-gemini",
-      KIMI_API_KEY: undefined,
-      MINIMAX_API_KEY: "test-minimax",
-    },
-    () => {
-      assert.deepEqual(getGeneratorModelChain(), [
-        "gemini-3.1-flash-lite",
-        "MiniMax-M2.1-lightning",
-      ]);
-      assert.equal(resolveGeneratorModel(), "gemini-3.1-flash-lite");
-    },
-  );
-});
-
-test("getGeneratorModelChain uses MiniMax when only MiniMax is configured", () => {
-  withEnv(
-    {
-      OPENAI_API_KEY: undefined,
-      GEMINI_API_KEY: undefined,
-      KIMI_API_KEY: undefined,
-      MINIMAX_API_KEY: "test-minimax",
-    },
-    () => {
-      assert.deepEqual(getGeneratorModelChain(), ["MiniMax-M2.1-lightning"]);
-      assert.equal(resolveGeneratorModel(), "MiniMax-M2.1-lightning");
-    },
-  );
-});
-
- test("generator uses the configured Azure deployment without trying unavailable default", () => {
-  withEnv({ OPENAI_API_KEY: "test", OPENAI_GENERATOR_MODEL: "gpt-4o" }, () => {
+test("getGeneratorModelChain uses the configured OpenAI generator model", () => {
+  withEnv({ OPENAI_API_KEY: "test-openai", OPENAI_GENERATOR_MODEL: "gpt-4o" }, () => {
     assert.deepEqual(getGeneratorModelChain(), ["gpt-4o"]);
     assert.equal(resolveGeneratorModel(), "gpt-4o");
+  });
+  withEnv({ OPENAI_API_KEY: "test-openai", OPENAI_GENERATOR_MODEL: undefined }, () => {
+    assert.deepEqual(getGeneratorModelChain(), ["gpt-4o-mini"]);
+  });
+});
+
+test("getGeneratorModelChain refuses to run without OpenAI", () => {
+  withEnv({ OPENAI_API_KEY: undefined, OPENAI_GENERATOR_MODEL: undefined }, () => {
+    assert.throws(() => getGeneratorModelChain(), /OPENAI_API_KEY/);
   });
 });

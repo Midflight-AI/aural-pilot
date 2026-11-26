@@ -15,14 +15,12 @@ type FunctionalScenario = Record<string, { events: FunctionalRelayEvent[] }>;
 type FunctionalScenarioId =
   | "connection-failure"
   | "default"
-  | "english-failover"
-  | "chinese-failover"
   | "farewell-complete"
   | "thinking-after-asr"
   | "thinking-until-response"
   | "asr-cancelled"
-  | "qwen-transcript-revision"
-  | "qwen-caption-stability"
+  | "transcript-revision"
+  | "caption-stability"
   | "listening-feedback"
   | "long-transcript-layout";
 
@@ -45,35 +43,15 @@ declare global {
 
 const functionalScenarios: Record<FunctionalScenarioId, FunctionalScenario> = {
   "connection-failure": {
-    "/ws/voice": { events: [{ type: "close", delay: 30 }] },
     "/ws/openai-voice": { events: [{ type: "close", delay: 30 }] },
   },
   default: {
-    "/ws/voice": {
-      events: [{ type: "ready", delay: 30 }],
-    },
-    "/ws/openai-voice": {
-      events: [{ type: "close", delay: 30 }],
-    },
-  },
-  "english-failover": {
-    "/ws/voice": {
-      events: [{ type: "close", delay: 30 }],
-    },
-    "/ws/openai-voice": {
-      events: [{ type: "ready", delay: 30 }],
-    },
-  },
-  "chinese-failover": {
-    "/ws/voice": {
-      events: [{ type: "close", delay: 30 }],
-    },
     "/ws/openai-voice": {
       events: [{ type: "ready", delay: 30 }],
     },
   },
   "farewell-complete": {
-    "/ws/voice": {
+    "/ws/openai-voice": {
       events: [
         { type: "ready", delay: 20 },
         {
@@ -98,12 +76,9 @@ const functionalScenarios: Record<FunctionalScenarioId, FunctionalScenario> = {
         { type: "json", delay: 200, message: { type: "interview_complete" } },
       ],
     },
-    "/ws/openai-voice": {
-      events: [{ type: "close", delay: 30 }],
-    },
   },
   "thinking-after-asr": {
-    "/ws/voice": {
+    "/ws/openai-voice": {
       events: [
         { type: "ready", delay: 20 },
         {
@@ -126,12 +101,9 @@ const functionalScenarios: Record<FunctionalScenarioId, FunctionalScenario> = {
         },
       ],
     },
-    "/ws/openai-voice": {
-      events: [{ type: "close", delay: 30 }],
-    },
   },
   "thinking-until-response": {
-    "/ws/voice": {
+    "/ws/openai-voice": {
       events: [
         { type: "ready", delay: 20 },
         {
@@ -167,12 +139,9 @@ const functionalScenarios: Record<FunctionalScenarioId, FunctionalScenario> = {
         { type: "json", delay: 1_050, message: { type: "tts_ended" } },
       ],
     },
-    "/ws/openai-voice": {
-      events: [{ type: "close", delay: 30 }],
-    },
   },
   "asr-cancelled": {
-    "/ws/voice": {
+    "/ws/openai-voice": {
       events: [
         { type: "ready", delay: 20 },
         {
@@ -194,12 +163,9 @@ const functionalScenarios: Record<FunctionalScenarioId, FunctionalScenario> = {
         },
       ],
     },
-    "/ws/openai-voice": {
-      events: [{ type: "close", delay: 30 }],
-    },
   },
-  "qwen-transcript-revision": {
-    "/ws/voice": {
+  "transcript-revision": {
+    "/ws/openai-voice": {
       events: [
         { type: "ready", delay: 20 },
         { type: "json", delay: 5_000, message: { type: "asr_pending", transcriptMode: "replace", text: "Thank you Hello we can hello", delayMs: 50 } },
@@ -211,10 +177,9 @@ const functionalScenarios: Record<FunctionalScenarioId, FunctionalScenario> = {
         { type: "json", delay: 7_000, message: { type: "asr_ended", transcriptMode: "replace", text: "" } },
       ],
     },
-    "/ws/openai-voice": { events: [{ type: "close", delay: 30 }] },
   },
-  "qwen-caption-stability": {
-    "/ws/voice": {
+  "caption-stability": {
+    "/ws/openai-voice": {
       events: [
         { type: "ready", delay: 20 },
         { type: "json", delay: 5_000, message: { type: "asr_ended", transcriptMode: "replace", text: "My earlier answer." } },
@@ -226,10 +191,9 @@ const functionalScenarios: Record<FunctionalScenarioId, FunctionalScenario> = {
         { type: "json", delay: 8_100, message: { type: "asr_ended", transcriptMode: "replace", text: "I start by understanding the problem. Then I define success and test scalability." } },
       ],
     },
-    "/ws/openai-voice": { events: [{ type: "close", delay: 30 }] },
   },
   "listening-feedback": {
-    "/ws/voice": {
+    "/ws/openai-voice": {
       events: [
         { type: "ready", delay: 20 },
         { type: "json", delay: 5_000, message: { type: "asr", transcriptMode: "replace", data: { results: [{ text: "I start by understanding the problem.", definite: false }] } } },
@@ -239,10 +203,9 @@ const functionalScenarios: Record<FunctionalScenarioId, FunctionalScenario> = {
         { type: "json", delay: 10_000, message: { type: "asr_ended", transcriptMode: "replace", text: "I start by understanding the problem. Then I test scalability." } },
       ],
     },
-    "/ws/openai-voice": { events: [{ type: "close", delay: 30 }] },
   },
   "long-transcript-layout": {
-    "/ws/voice": {
+    "/ws/openai-voice": {
       events: [
         { type: "ready", delay: 20 },
         {
@@ -257,24 +220,19 @@ const functionalScenarios: Record<FunctionalScenarioId, FunctionalScenario> = {
         },
       ],
     },
-    "/ws/openai-voice": {
-      events: [{ type: "close", delay: 30 }],
-    },
   },
 };
 
 function installFunctionalRelayMocks(scenario: FunctionalScenario) {
   const normalizePath = (pathname: string) => pathname.replace(/\/+$/, "") || "/";
-  const relayPaths = new Set(["/ws/voice", "/ws/openai-voice"]);
+  const relayPaths = new Set(["/ws/openai-voice"]);
   const relayPathForUrl = (url: URL) => {
     const path = normalizePath(url.pathname);
     if (relayPaths.has(path)) return path;
-    // The manually opened harness must also mock the configured local relays,
+    // The manually opened harness must also mock the configured relay,
     // so a UI preview cannot accidentally start a real interview connection.
-    const primary = process.env.NEXT_PUBLIC_VOICE_RELAY_URL;
-    const fallback = process.env.NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL;
-    if (primary && url.href === new URL(primary, window.location.href).href) return "/ws/voice";
-    if (fallback && url.href === new URL(fallback, window.location.href).href) return "/ws/openai-voice";
+    const configured = process.env.NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL;
+    if (configured && url.href === new URL(configured, window.location.href).href) return "/ws/openai-voice";
     return null;
   };
 

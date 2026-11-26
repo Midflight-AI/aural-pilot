@@ -71,7 +71,7 @@
     <td width="25%" align="center"><strong>🛡 Anti-Cheating</strong><br/><sub>Tab monitoring, paste blocking, multi-screen detection, integrity logs</sub></td>
     <td width="25%" align="center"><strong>👥 Team Management</strong><br/><sub>Organizations, projects, and role-based access control</sub></td>
     <td width="25%" align="center"><strong>🌐 Multilingual</strong><br/><sub>English and Chinese with pluggable locale system</sub></td>
-    <td width="25%" align="center"><strong>🔌 Pluggable LLMs</strong><br/><sub>OpenAI, Gemini, Moonshot Kimi, MiniMax — or any OpenAI-compatible API</sub></td>
+    <td width="25%" align="center"><strong>🔌 Pluggable LLMs</strong><br/><sub>OpenAI on Azure for voice, interviewing and reports</sub></td>
   </tr>
   <tr>
     <td width="25%" align="center"><strong>🚀 Quick Start Templates</strong><br/><sub>Pre-built interview templates for technical, behavioral, research, and more</sub></td>
@@ -272,8 +272,8 @@ Track all your interviews, sessions, and candidates from a unified dashboard. Or
 | Language | TypeScript |
 | Database | [Supabase](https://supabase.com/) (PostgreSQL + Auth + Storage + RLS) |
 | API | [tRPC](https://trpc.io/) |
-| AI / LLM | OpenAI, Google Gemini, Moonshot Kimi, MiniMax — pluggable provider system |
-| Voice | WebSocket relay servers (Volcengine Doubao, Azure OpenAI Realtime) |
+| AI / LLM | OpenAI (Azure) |
+| Voice | WebSocket relay server (Azure OpenAI Realtime) |
 | UI | [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) + [Radix](https://radix-ui.com/) |
 | Code Editor | [Monaco Editor](https://microsoft.github.io/monaco-editor/) |
 | Whiteboard | [Excalidraw](https://excalidraw.com/) |
@@ -301,18 +301,18 @@ Track all your interviews, sessions, and candidates from a unified dashboard. Or
 │                        │  │  Servers         │
 │  ┌──────────────────┐  │  │  ┌────────────┐  │
 │  │ tRPC Routers     │  │  │  │ Volcengine │  │
-│  │ (typed RPC API)  │  │  │  │ Doubao S2S │  │
-│  ├──────────────────┤  │  │  ├────────────┤  │
-│  │ REST API Routes  │  │  │  │ Azure OAI  │  │
-│  │ /api/ai/*        │  │  │  │ Realtime   │  │
+│  │ (typed RPC API)  │  │  │  │ Realtime   │  │
+│  ├──────────────────┤  │  │  │            │  │
+│  │ REST API Routes  │  │  │  │            │  │
+│  │ /api/ai/*        │  │  │  │            │  │
 │  │ /api/voice/*     │  │  │  └────────────┘  │
 │  │ /api/auth/*      │  │  └──────────────────┘
 │  ├──────────────────┤  │
 │  │ AI Provider      │  │
 │  │ Registry         │  │
 │  │ ┌──────────────┐ │  │
-│  │ │OAI Gemini    │ │  │
-│  │ │Kimi MiniMax  │ │  │
+│  │ │OpenAI        │ │  │
+│  │ │              │ │  │
 │  │ └──────────────┘ │  │
 │  └──────────────────┘  │
 └────────────┬───────────┘
@@ -337,7 +337,7 @@ Track all your interviews, sessions, and candidates from a unified dashboard. Or
 | **REST API Routes** | `src/app/api/` | Endpoints for AI operations (chat, generate, refine, summarize), practice feedback/hints/follow-ups, voice token/save/TTS, auth, session lifecycle (complete/leave), and file uploads. |
 | **Developer API (v1)** | `src/app/api/v1/` | Full REST API for programmatic interview management — CRUD for interviews, questions, sessions, candidates, publish, and usage. Authenticated via `dlv_` API keys with rate limiting. OpenAPI 3.1 spec at `/api/v1/openapi.json`. |
 | **AI Provider Registry** | `src/lib/ai/` | Pluggable LLM system with a provider registry, per-task model selection, and prompt templates for interviewing, generation, and report summarization. |
-| **Voice Relay** | `server/` | Standalone WebSocket servers that proxy audio between the browser and speech-to-speech APIs (Volcengine Doubao or Azure OpenAI Realtime). |
+| **Voice Relay** | `server/` | Standalone WebSocket servers that proxy audio between the browser and Azure OpenAI Realtime. |
 | **Practice / Prep Module** | `src/app/(dashboard)/practices/`, `src/app/practice/`, `src/components/prep/`, `src/lib/prep/`, `src/server/routers/prep.ts` | Interview practice workspace with JD/resume context, voice or text answers, streamed feedback, suggested answers, follow-up coaching, practice attempt history, and resumable sessions. |
 | **Components** | `src/components/` | React components split by domain — `session/` (chat/voice/video UI, anti-cheating), `interview/` (builder, question cards), `auth/`, `layout/`, and `ui/` (shadcn primitives). |
 | **Supabase Layer** | `src/lib/supabase/` | Client/server/admin helpers for database access, auth, and storage. Row-Level Security enforces data isolation per user and organization. |
@@ -367,8 +367,8 @@ Run Aural on your own servers for full control over data, configuration, and cus
 
 - **Node.js** 20.19+, 22.13+, or 24+ and npm (Node 22 is used in CI)
 - **Supabase** project (cloud or local via `supabase start`)
-- **LLM API key** — at least one of: OpenAI, Google Gemini, Kimi (Moonshot), or MiniMax
-- **Voice relay credentials** — Volcengine Doubao (primary) or Azure OpenAI (backup), if you want voice interviews or voice practice
+- **OpenAI API key** — `OPENAI_API_KEY` (Azure OpenAI with `OPENAI_BASE_URL`)
+- **Azure OpenAI Realtime credentials** — if you want voice interviews or voice practice
 
 #### 1. Clone and Install
 
@@ -415,8 +415,8 @@ cp .env.example .env.local
 Edit `.env.local` with your credentials. At minimum you need:
 
 - Supabase URL and keys
-- One LLM provider API key (`OPENAI_API_KEY` recommended for the main app; `GEMINI_API_KEY` recommended for relay summarization and fallback generation)
-- Voice credentials only if you want voice interviews or voice practice (`DOUBAO_*` for the recommended relay, or `AZURE_OPENAI_*` for the backup relay)
+- `OPENAI_API_KEY` (and `OPENAI_BASE_URL` for Azure)
+- `AZURE_OPENAI_*` only if you want voice interviews or voice practice
 - Optional `JINA_READER_API_KEY` for higher-rate JD URL imports when a public page blocks direct server-side fetching
 
 **Local Supabase key mapping** — map the keys from `supabase status` output to your `.env.local`:
@@ -434,18 +434,15 @@ Edit `.env.local` with your credentials. At minimum you need:
 # Start the Next.js dev server
 npm run dev
 
-# Start the primary voice relay (Seed ASR by default; optional Qwen ASR)
+# Start the voice relay (Azure OpenAI Realtime)
 npm run dev:voice
-
-# Or start the backup voice relay (Azure OpenAI Realtime)
-npm run dev:openai-voice
 ```
 
 Open [http://localhost:3000/login](http://localhost:3000/login) to sign in, or [http://localhost:3000/register](http://localhost:3000/register) to create a new account.
 
 #### Isolated Local Development
 
-To start the web app and primary voice relay together against **local Supabase**, use a separate configuration file:
+To start the web app and voice relay together against **local Supabase**, use a separate configuration file:
 
 ```bash
 cp .env.example .env.testing.local
@@ -453,11 +450,11 @@ cp .env.example .env.testing.local
 npm run dev:local
 ```
 
-Keep `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, and both `NEXT_PUBLIC_*VOICE_RELAY_URL` values on loopback addresses. The defaults in `.env.example` use app port 3000, primary relay port 8766, and backup relay port 8767. Set the local Supabase keys explicitly; the placeholder keys do not authenticate.
+Keep `SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, and `NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL` on loopback addresses. The defaults in `.env.example` use app port 3000 and relay port 8767. Set the local Supabase keys explicitly; the placeholder keys do not authenticate.
 
-The launcher binds the app and primary relay to `127.0.0.1`, rejects non-local backend/app/relay URLs, and masks settings from other env files and inherited provider credentials. Put every provider key needed for this run in `.env.testing.local`. The file is gitignored, and `.env.local` is left untouched. Recognition, speech synthesis, and LLM requests still use the providers you configure; only the app, database, and relay endpoints are local.
+The launcher binds the app and relay to `127.0.0.1`, rejects non-local backend/app/relay URLs, and masks settings from other env files and inherited provider credentials. Put every provider key needed for this run in `.env.testing.local`. The file is gitignored, and `.env.local` is left untouched. Recognition, speech synthesis, and LLM requests still go to the Azure resources you configure; only the app, database, and relay endpoints are local.
 
-Only the primary relay starts with this command. Stop the launcher before starting those same services separately. The regular `dev`, `dev:voice`, and `dev:openai-voice` commands continue to use the normal environment. See [Voice Relay](#voice-relay) to opt into Qwen transcription.
+Stop the launcher before starting those same services separately. The regular `dev` and `dev:voice` commands continue to use the normal environment.
 
 ---
 
@@ -511,109 +508,34 @@ The practice module lets interview authors and candidates rehearse against an in
 | API layer | `src/server/routers/prep.ts`, `src/app/api/prep/` | tRPC data mutations plus streaming feedback, follow-up, hint, and leave endpoints. |
 | Data model | `supabase/migrations/004_interview_prep.sql`, `supabase/migrations/005_account_delete_and_answer_bank.sql` | Adds interview context, practice sessions and attempts, the personal answer bank, and RLS policies. |
 
-Practice feedback uses the same LLM provider chain as interview generation. Voice practice also uses the voice relay and Doubao TTS settings from `.env.local`; answer audio is stored in the existing private `recordings` bucket.
+Practice feedback uses the same OpenAI generator model as interview generation. Voice practice also uses the voice relay and `OPENAI_TTS_DEPLOYMENT` speech from `.env.local`; answer audio is stored in the existing private `recordings` bucket.
 
 If saving a practice attempt fails, the feedback stream reports a save warning instead of confirming an unsaved attempt. Generated feedback can remain visible even when it was not saved to history.
 
 ---
 
-## AI Provider System
+## AI Models
 
-Aural uses a pluggable LLM provider architecture. You need **at least one** provider configured. The system auto-selects the first available provider in this order: OpenAI > Gemini > Kimi > MiniMax.
+Aural uses OpenAI only, normally through Azure (`OPENAI_BASE_URL`). Set `OPENAI_API_KEY`.
 
-### Providers
-
-| Provider | Env Variable | Default Model | Get API Key |
-|----------|-------------|---------------|-------------|
-| **OpenAI** (recommended) | `OPENAI_API_KEY` | `gpt-4o-mini` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-| Google Gemini | `GEMINI_API_KEY` | `gemini-3.1-flash-lite` | [aistudio.google.com](https://aistudio.google.com/) |
-| Moonshot Kimi | `KIMI_API_KEY` | `moonshot-v1-8k` | [platform.moonshot.cn](https://platform.moonshot.cn/) |
-| MiniMax | `MINIMAX_API_KEY` | `MiniMax-Text-01` | [platform.minimaxi.com](https://platform.minimaxi.com/) |
-
-You can also use any OpenAI-compatible API (e.g., local models via Ollama or LiteLLM) by setting `OPENAI_BASE_URL`.
-
-### How LLMs Are Used
-
-Aural uses LLMs for several distinct tasks, each selecting the best available model:
-
-| Task | What It Does | OpenAI Model | Gemini Model | Kimi Model | MiniMax Model |
-|------|-------------|-------------|--------------|-----------|--------------|
-| **Chat interviewing** | Powers the AI interviewer during live sessions — asks questions, generates follow-ups, adapts tone | `gpt-4o-mini` | `gemini-3.1-flash-lite` | `moonshot-v1-8k` | `MiniMax-Text-01` |
-| **Interview generation** | Generates a complete interview (questions, criteria, settings) from a plain-language description | `gpt-4o-mini` | `gemini-3.1-flash-lite` | `moonshot-v1-8k` | `MiniMax-M2.1-lightning` |
-| **Question refinement** | Improves or refines existing interview questions based on feedback | `gpt-4o-mini` | `gemini-3.1-flash-lite` | `moonshot-v1-8k` | `MiniMax-M2.1-lightning` |
-| **Practice coaching** | Scores practice answers, streams feedback, generates follow-up coaching, and suggests improved answers | `gpt-4o-mini` | `gemini-3.1-flash-lite` | `moonshot-v1-8k` | `MiniMax-M2.1-lightning` |
-| **Report & analysis** | Generates post-interview reports with per-question scores, highlights, and improvement areas | `gpt-4o` | `gemini-3.1-flash-lite` | `kimi-k2.5` | `MiniMax-M2.1-lightning` |
-
-Report generation uses a higher-capability model when OpenAI or Kimi is configured because it requires synthesizing an entire conversation into structured analysis. Chat interviewing uses each provider's default model unless overridden per-interview in the settings. Interview generation and practice coaching use a fallback chain, so configuring more than one provider improves resilience.
+| Task | Model setting | Default |
+|------|---------------|---------|
+| Chat interviewing, interview generation, question refinement, practice coaching | `OPENAI_GENERATOR_MODEL` | `gpt-4o-mini` |
+| Report & analysis | `OPENAI_REPORT_MODEL` | `gpt-5.5` |
+| Speaker check, coach speech, introduction lines | `OPENAI_TTS_DEPLOYMENT` | `aural-pilot-tts` |
+| Voice interviews, mic checks, practice dictation | `AZURE_OPENAI_DEPLOYMENT` | `gpt-realtime-1.5` |
 
 ---
 
 ## Voice Relay
 
-Aural supports real-time AI voice interviews via WebSocket relay servers. Two relay implementations are provided.
-
-The primary relay separates speech recognition, speech synthesis, and interviewer replies. **Seed remains the default recognition provider.** You can opt into either Qwen adapter without changing the Doubao TTS service or relay LLM. Azure OpenAI Realtime remains a separate backup relay.
-
-### Primary: Seed or Qwen ASR + Doubao TTS (`server/voice-relay.ts`)
-
-The primary relay provides per-question interview flow, LLM-powered context summarization, English/Chinese recognition, and automatic server-side reconnection. It carries recognized speech across recovery, buffers audio while reconnecting, and accepts transcript corrections without accumulating obsolete drafts. The UI keeps live captions steady and distinguishes transcription, finalization, and reply generation, including reduced-motion feedback.
+Aural runs real-time AI voice interviews through one WebSocket relay (`server/openai-voice-relay.ts`) on Azure OpenAI's Realtime API. It handles voice interviews, microphone checks and practice dictation, with `whisper-1` transcription by default (`OPENAI_REALTIME_TRANSCRIPTION_MODEL`). If the connection drops, the browser reconnects to the same relay and resumes at the current question.
 
 ```bash
-npm run dev:voice          # starts on port 8766
+npm run dev:voice   # starts on port 8767
 ```
 
-**Required env vars:**
-
-- Seed ASR: `DOUBAO_API_KEY`.
-- Qwen ASR, when selected: `QWEN_ASR_API_KEY` for the configured `dashscope.aliyuncs.com` endpoint.
-- Doubao TTS, for all primary-relay ASR providers: `DOUBAO_APP_ID` and `DOUBAO_ACCESS_TOKEN`.
-- A relay LLM API key, such as `GEMINI_API_KEY`.
-
-**Recommended supporting env vars:**
-
-- `GEMINI_API_KEY` for the relay LLM default (`gemini-3.1-flash-lite`)
-- `RELAY_LLM_PROVIDER=gemini`
-- `RELAY_LLM_MODEL=gemini-3.1-flash-lite`
-- `NEXT_PUBLIC_VOICE_RELAY_PRIMARY=voice`
-- `DOUBAO_ASR_RESOURCE_ID=volc.seedasr.sauc.duration`
-- `DOUBAO_TTS_RESOURCE_ID=seed-tts-2.0`
-- `DOUBAO_TTS_PCM_SAMPLE_LAYOUT=int16le`
-
-### Optional Qwen Transcription
-
-Set these variables in `.env.local`, or in `.env.testing.local` when using `npm run dev:local`:
-
-```dotenv
-VOICE_ASR_PROVIDER=qwen-audio
-QWEN_ASR_API_KEY=your-matching-region-key
-QWEN_ASR_NOISE_THRESHOLD=
-NEXT_PUBLIC_VOICE_RELAY_PRIMARY=voice
-DOUBAO_ASR_END_WINDOW_MS=800
-```
-
-| `VOICE_ASR_PROVIDER` | Recognition adapter | Default noise threshold |
-| --- | --- | --- |
-| `seed` (default, including when unset) | Volcengine Seed / BigModel streaming | Seed settings |
-| `qwen` | `qwen3-asr-flash-realtime` | `0.3` |
-| `qwen-audio` | `qwen-audio-3.0-asr-flash-streaming` | `0.1` |
-
-The Qwen adapters use `dashscope.aliyuncs.com`; obtain credentials for that endpoint's region. Keep `QWEN_ASR_API_KEY` server-side, without a `NEXT_PUBLIC_` prefix. Qwen selection applies to the primary relay's microphone checks, practice dictation, and voice interviews. It does not change the Azure relay's separate `VOICE_ASR_PRIMARY` setting.
-
-Leave `QWEN_ASR_NOISE_THRESHOLD` empty to use the selected adapter's default. Overrides must be between `-1` and `1`; higher values suppress more noise but may miss quiet speech. The shared `DOUBAO_ASR_END_WINDOW_MS` controls the silence window. Both adapters accept English/Chinese language hints; Qwen Audio also receives bounded interview context. Corrections replace the current draft, including empty retractions, while preserving speech carried over from an earlier connection.
-
-Restart the primary relay after changing ASR settings. To return to Seed, set `VOICE_ASR_PROVIDER=seed` and supply `DOUBAO_API_KEY`. Changes to browser-facing `NEXT_PUBLIC_*` settings require restarting the dev app or rebuilding the production app. Provider performance depends on your microphones, language mix, network, and account region; the offline regression tests do not measure live recognition accuracy or latency.
-
-### Backup: Azure OpenAI Realtime (`server/openai-voice-relay.ts`)
-
-An alternative relay using Azure OpenAI's Realtime API (`gpt-realtime-1.5` by default). It has its own recognition and voice configuration and can be used when primary-relay credentials are unavailable.
-
-```bash
-npm run dev:openai-voice   # starts on port 8767
-```
-
-**Required env vars:** `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`
-
-> **Tip:** You can run both relays simultaneously. The frontend uses `NEXT_PUBLIC_VOICE_RELAY_PRIMARY` to choose the first relay and automatically falls back to the alternate relay if the primary cannot connect.
+**Required env vars:** `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`; the browser reads `NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL`.
 
 ---
 
@@ -689,8 +611,7 @@ curl -X POST http://localhost:3000/api/v1/interviews/{id}/publish \
 | `npm run audit:dependencies` | Audit dependencies against the official npm registry |
 | `npm run test:web` | Run web tests |
 | `npm run test:functional` | Run Playwright-backed functional browser tests |
-| `npm run dev:voice` | Start primary voice relay (Seed or optional Qwen ASR, Doubao TTS) |
-| `npm run dev:openai-voice` | Start backup voice relay (Azure OpenAI) |
+| `npm run dev:voice` | Start the voice relay (Azure OpenAI Realtime) |
 | `npm run db:types` | Regenerate Supabase TypeScript types |
 
 ---

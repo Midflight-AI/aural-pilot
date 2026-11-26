@@ -18,9 +18,8 @@ Build remotely with `docker build -f deploy/relay.Dockerfile .`. Runtime port is
 - `AZURE_OPENAI_API_KEY`: Azure resource key.
 - `AZURE_OPENAI_DEPLOYMENT`: `aural-pilot-voice`.
 - `AZURE_OPENAI_VOICE`: `ash`.
-- `VOICE_ASR_PRIMARY`: `openai`.
 
-Web build variables select the relay with `NEXT_PUBLIC_VOICE_RELAY_PRIMARY=openai` and `NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL=wss://<protected relay hostname>`.
+The web build points at the relay with `NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL=wss://<protected relay hostname>`. It is the only voice path: interviews, mic checks and practice dictation all use it, and the speaker check and coach speech use the Azure speech deployment (`OPENAI_TTS_DEPLOYMENT`, default `aural-pilot-tts`).
 
 Report generation needs its own configured text-model deployment/provider; the voice model does not produce Aural reports by itself. Reports use the Azure deployment named `gpt-5.5` unless `OPENAI_REPORT_MODEL` names another. Every question and criterion score must carry a quote the app finds word for word in the participant's answers, or the score is dropped. No provider keys are stored in this repository.
 

@@ -39,8 +39,7 @@ If you're working on voice interview features:
 
 ```bash
 # In separate terminals
-npm run dev:voice         # Kimi/Doubao voice relay on :8081
-npm run dev:openai-voice  # OpenAI voice relay on :8082
+npm run dev:voice         # Azure OpenAI voice relay on :8767
 ```
 
 ## Making Changes

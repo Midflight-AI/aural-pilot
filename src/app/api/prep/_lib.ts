@@ -272,7 +272,7 @@ export async function drainLlmStream(
 /**
  * Stateful filter that strips reasoning-mode <think>...</think> blocks from
  * what the user sees, while preserving the full raw output for downstream
- * JSON parsing. Some models (e.g. Kimi k2.5) wrap their JSON inside the
+ * JSON parsing. Some models wrap their JSON inside the
  * thinking block, so JSON extraction must run against `state.fullContent`,
  * not the visible string.
  */

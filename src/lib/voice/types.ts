@@ -1,12 +1,8 @@
 /**
  * Voice types for the interview platform.
  *
- * Currently uses browser Web Speech API (SpeechRecognition + SpeechSynthesis)
- * for voice interaction. The LLM response is handled by the existing
- * /api/ai/chat endpoint using KIMI/Minimax providers.
- *
- * Future: Can be extended to use server-side ASR/TTS providers
- * (e.g., Doubao, Azure, Google Cloud Speech) for better quality.
+ * Browser Web Speech API (SpeechRecognition + SpeechSynthesis) fallback for
+ * voice interaction; the LLM response comes from /api/ai/chat.
  */
 
 export interface VoiceSessionConfig {

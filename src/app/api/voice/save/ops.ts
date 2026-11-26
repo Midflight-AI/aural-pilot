@@ -237,7 +237,7 @@ async function generateSummary(
       })
       .filter((s) => s.code.trim().length > 0);
 
-    const provider = getProvider(REPORT_MODEL);
+    const provider = getProvider();
     const textMessages = evidence.turns
       .filter((m) => m.contentType === "TEXT")
       .map((m) => ({

@@ -35,10 +35,9 @@ import {
     MIC_AUDIO_CHUNK_SAMPLES,
 } from "@/lib/voice/mic-audio";
 import {
-    buildRelayTargets,
     isRecoverableRelayErrorMessage,
     RelayConnector,
-    resolveRelayPrimaryPreference,
+    resolveRelayUrl,
 } from "@/lib/voice/relay-routing";
 import { isBrowserPlayableTtsContentType } from "@/lib/voice/tts-content-type";
 import {
@@ -738,13 +737,8 @@ function MicCheck({ done, onDone, language, sessionId, allowSkip = true }: { don
     };
 
     const connector = new RelayConnector<Record<string, unknown>>({
-      targets: buildRelayTargets({
-        language: languageRef.current,
-        voiceRelayUrl: process.env.NEXT_PUBLIC_VOICE_RELAY_URL,
-        openAiRelayUrl: process.env.NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL,
-        primaryPreference: resolveRelayPrimaryPreference(
-          process.env.NEXT_PUBLIC_VOICE_RELAY_PRIMARY,
-        ),
+      url: resolveRelayUrl({
+        relayUrl: process.env.NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL,
         browserProtocol: window.location.protocol,
         browserHost: window.location.host,
       }),
@@ -786,19 +780,17 @@ function MicCheck({ done, onDone, language, sessionId, allowSkip = true }: { don
             finish(text);
           }
         } else if (msg.type === "disconnected") {
-          if (activeConnector.canFailover) {
-            void activeConnector.failover("mic test relay disconnected");
+          const reconnecting = activeConnector.reconnect();
+          if (reconnecting) {
+            void reconnecting.catch(() => {
+              // onPermanentFailure finishes the check
+            });
           } else {
             finish("", "relay");
           }
         } else if (msg.type === "error") {
           const message = (msg.message as string) || "";
-          if (
-            isRecoverableRelayErrorMessage(message) &&
-            activeConnector.canFailover
-          ) {
-            return;
-          }
+          if (isRecoverableRelayErrorMessage(message)) return;
           finish("", "relay");
         } else if (msg.type === "timeout") {
           finish("", "timeout");
@@ -858,7 +850,7 @@ function MicCheck({ done, onDone, language, sessionId, allowSkip = true }: { don
       const abort = new AbortController();
       abortRef.current = abort;
 
-      const res = await fetch(`/api/voice/tts-s2s?format=wav&t=${Date.now()}`, {
+      const res = await fetch(`/api/voice/tts?format=wav&t=${Date.now()}`, {
         method: "POST",
         cache: "no-store",
         headers: {
@@ -873,21 +865,21 @@ function MicCheck({ done, onDone, language, sessionId, allowSkip = true }: { don
       abortRef.current = null;
 
       if (res.status === 204) {
-        throw new Error("Seed TTS not available for this client");
+        throw new Error("Speech not available for this client");
       }
 
       if (!res.ok) {
-        throw new Error(`Seed TTS HTTP ${res.status}`);
+        throw new Error(`Speech HTTP ${res.status}`);
       }
 
       const contentType = res.headers.get("content-type") || "";
       if (!isBrowserPlayableTtsContentType(contentType)) {
-        throw new Error(`Unexpected Seed TTS content type: ${contentType}`);
+        throw new Error(`Unexpected speech content type: ${contentType}`);
       }
 
       const blob = await res.blob();
       if (blob.size === 0) {
-        throw new Error("Seed TTS returned no audio");
+        throw new Error("Speech returned no audio");
       }
 
       const audioUrl = URL.createObjectURL(blob);
@@ -900,7 +892,7 @@ function MicCheck({ done, onDone, language, sessionId, allowSkip = true }: { don
           audioRef.current = audio;
           audio.preload = "auto";
           audio.onended = () => resolve();
-          audio.onerror = () => reject(new Error("Seed TTS audio playback failed"));
+          audio.onerror = () => reject(new Error("Speech audio playback failed"));
 
           const startPlayback = () => {
             void audio.play().catch(reject);

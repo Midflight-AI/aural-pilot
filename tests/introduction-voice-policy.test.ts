@@ -125,7 +125,7 @@ test('the standard voice reads the opening and skip reminder verbatim', () => {
     const awaitingIntroduction = true, isIntroduction = false, pendingInterviewComplete = false;
     const vadSpeechActive = false, reconnecting = false, isTransitioning = false, interviewDone = false;
     const WebSocket = {OPEN: 1}, oaiWs = {readyState: 1, send() { throw new Error('Unexpected model response'); }};
-    const AZURE_ENDPOINT = 'wss://example.test', AZURE_API_KEY = 'test';
+    const AZURE_ENDPOINT = 'wss://example.test', AZURE_API_KEY = 'test', DEFAULT_TTS_DEPLOYMENT = 'aural-pilot-tts';
     let responseInFlight = false, introductionRecognition = '', introductionSpeechAbort = null;
     let spoken;
     const clearQuestionPrompt = () => {};

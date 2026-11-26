@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const provider = getProvider(interview.llmProvider);
+    const provider = getProvider();
 
     const conversationHistory: LLMMessage[] = (messages ?? [])
       .filter(

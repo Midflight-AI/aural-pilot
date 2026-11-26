@@ -11,11 +11,9 @@ import {
   shouldFlushPlaybackQueue,
 } from "@/lib/voice/playback-jitter-buffer";
 import {
-  buildRelayTargets,
   isRecoverableRelayErrorMessage,
   RelayConnector,
-  relayDisplayName,
-  resolveRelayPrimaryPreference,
+  resolveRelayUrl,
 } from "@/lib/voice/relay-routing";
 import { shouldCommitTranscript } from "@/lib/voice/transcript-commit";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -97,14 +95,14 @@ interface TrackedMessage {
 }
 
 /**
- * Voice interview hook using Volcengine S2S (Speech-to-Speech) via relay.
+ * Voice interview hook using the Azure OpenAI Realtime relay.
  *
  * Flow:
  * 1. Browser connects and sends interview context to relay
- * 2. Relay builds system prompt and connects to Volcengine
+ * 2. Relay builds system prompt and connects to Azure OpenAI Realtime
  * 3. Browser captures mic audio as 16kHz int16 PCM
  * 4. Audio sent to relay server via WebSocket (hex-encoded)
- * 5. Relay forwards to Volcengine S2S which handles ASR + LLM + TTS
+ * 5. Relay forwards to GPT realtime, which handles transcription, replies and speech
  * 6. TTS audio (24kHz int16 PCM) streamed back and played via AudioContext
  * 7. Per-question transitions managed by relay with LLM summarization
  * 8. On disconnect, all messages are saved to database
@@ -673,13 +671,8 @@ export function useVoice({
 
       relayConnectorRef.current?.close();
 
-      const targets = buildRelayTargets({
-        language: interviewContext.language,
-        voiceRelayUrl: process.env.NEXT_PUBLIC_VOICE_RELAY_URL,
-        openAiRelayUrl: process.env.NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL,
-        primaryPreference: resolveRelayPrimaryPreference(
-          process.env.NEXT_PUBLIC_VOICE_RELAY_PRIMARY,
-        ),
+      const relayUrl = resolveRelayUrl({
+        relayUrl: process.env.NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL,
         browserProtocol:
           typeof window !== "undefined" ? window.location.protocol : undefined,
         browserHost:
@@ -687,7 +680,7 @@ export function useVoice({
       });
 
       const connector = new RelayConnector<Record<string, unknown>>({
-        targets,
+        url: relayUrl,
         binaryType: "arraybuffer",
         reconnectAttempts: 2,
         reconnectDelayMs: 1500,
@@ -711,32 +704,19 @@ export function useVoice({
           playAudio(data);
           onTtsChunk?.(data);
         },
-        onConnected: ({ target, isFailover, connector: activeConnector }) => {
-          log.info(
-            `${isFailover ? "Failed over to" : "Connected to"} ${relayDisplayName(
-              target.kind
-            )} @ ${target.url}`
-          );
-          if (isFailover) {
+        onConnected: ({ isReconnect, connector: activeConnector }) => {
+          log.info(`${isReconnect ? "Reconnected to" : "Connected to"} voice relay @ ${relayUrl}`);
+          if (isReconnect) {
             replayLatestRelayContext(activeConnector);
           }
         },
-        onReconnecting: (attempt, maxAttempts, target) => {
+        onReconnecting: (attempt, maxAttempts) => {
           observe(sessionId,"voice_reconnect");
-          log.info(
-            `Reconnecting to ${relayDisplayName(target.kind)} (attempt ${attempt}/${maxAttempts})...`
-          );
-        },
-        onFailover: ({ from, to, reason }) => {
-          log.warn(
-            `Relay failover: ${relayDisplayName(from.kind)} -> ${relayDisplayName(
-              to.kind
-            )} (${reason})`
-          );
+          log.info(`Reconnecting to voice relay (attempt ${attempt}/${maxAttempts})...`);
         },
         onPermanentFailure: (error) => {
           observe(sessionId,"voice_connect_failed");
-          log.error("Voice relay exhausted all targets:", error.message);
+          log.error("Voice relay connection failed:", error.message);
           setState((s) => ({ ...s, isConnected: false }));
           onError?.(
             error.message || "Voice connection error. Is the relay server running?"
@@ -759,7 +739,7 @@ export function useVoice({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onError, playAudio, interviewContext]);
 
-  /** Extract text from a Volcengine event payload, trying common field names */
+  /** Extract text from a relay event payload, trying common field names */
   const extractText = useCallback(
     (data: Record<string, unknown> | undefined): string => {
       if (!data) return "";
@@ -869,7 +849,7 @@ export function useVoice({
         }
 
         case "asr": {
-          // Legacy packets merge; normalized Qwen snapshots replace the whole current draft.
+          // Legacy packets merge; replacement snapshots replace the whole current draft.
           const results =
             (msg.data?.results as Array<Record<string, unknown>>) || [];
           if (results.length > 0) {
@@ -1199,11 +1179,8 @@ export function useVoice({
           clearAsrProcessingTimer();
           dropAudioUntilQuestionChangeRef.current = false;
           const message = (msg.message as string) || "Relay error";
-          if (
-            isRecoverableRelayErrorMessage(message) &&
-            relayConnectorRef.current?.canFailover
-          ) {
-            log.warn(`Recoverable relay error ignored during failover window: ${message}`);
+          if (isRecoverableRelayErrorMessage(message)) {
+            log.warn(`Recoverable relay error ignored while reconnecting: ${message}`);
             break;
           }
           onError?.(message);
@@ -1216,9 +1193,9 @@ export function useVoice({
           clearAsrProcessingTimer();
           dropAudioUntilQuestionChangeRef.current = false;
           setState((s) => ({ ...s, isConnected: false }));
-          if (relayConnectorRef.current?.canFailover) {
-            void relayConnectorRef.current.failover("relay disconnected message");
-          }
+          void relayConnectorRef.current?.reconnect()?.catch(() => {
+            // onPermanentFailure already reports the error
+          });
           break;
       }
     },

@@ -6,7 +6,7 @@ const BROWSER_PLAYABLE_TTS_CONTENT_TYPES = new Set([
   "audio/wave",
 ]);
 
-/** Whether an HTMLAudioElement can play the container returned by Seed TTS. */
+/** Whether an HTMLAudioElement can play the container returned by the speech route. */
 export function isBrowserPlayableTtsContentType(contentType: string): boolean {
   const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase();
   return BROWSER_PLAYABLE_TTS_CONTENT_TYPES.has(mediaType);

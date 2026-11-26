@@ -413,7 +413,7 @@ export async function POST(req: Request) {
                     maxTokens: answerAudio ? 1800 : 1200,
                     model: feedbackModel,
                   })
-                : getProvider(feedbackModel).streamResponse({
+                : getProvider().streamResponse({
                     messages,
                     temperature: 0.25,
                     maxTokens: 1200,
