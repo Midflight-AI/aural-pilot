@@ -1,3 +1,6 @@
+/** Azure speech deployment used when OPENAI_TTS_DEPLOYMENT is unset. */
+export const DEFAULT_TTS_DEPLOYMENT = "aural-pilot-tts";
+
 /** Server-side speech adapter; supports Azure's OpenAI-compatible v1 endpoint. */
 export async function synthesizeOpenAiSpeech(
   text: string,
@@ -8,7 +11,7 @@ export async function synthesizeOpenAiSpeech(
 ): Promise<Uint8Array> {
   const base = config?.base ?? process.env.OPENAI_BASE_URL;
   const key = config?.key ?? process.env.OPENAI_API_KEY;
-  const model = config?.model ?? process.env.OPENAI_TTS_DEPLOYMENT;
+  const model = config?.model ?? (process.env.OPENAI_TTS_DEPLOYMENT || DEFAULT_TTS_DEPLOYMENT);
   if (!base || !key || !model) throw new Error("Speech provider is not configured");
   if (!text.trim() || text.length > 4096) throw new Error("Invalid speech text length");
   const url = new URL("audio/speech", `${base.replace(/\/$/, "")}/`);

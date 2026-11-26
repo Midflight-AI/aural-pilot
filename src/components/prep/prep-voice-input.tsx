@@ -42,7 +42,7 @@ type Props = {
   disabled?: boolean;
 };
 
-/** Voice capture: Volcengine relay ASR when configured, else browser SpeechRecognition. */
+/** Voice capture: GPT relay transcription when configured, else browser SpeechRecognition. */
 export function PrepVoiceInput({
   language,
   baseText,

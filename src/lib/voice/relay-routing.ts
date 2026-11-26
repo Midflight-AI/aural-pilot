@@ -1,19 +1,9 @@
 import { videoRequestHeaders } from "../video/client";
-export type RelayKind = "voice" | "openai";
-export type RelayPrimaryPreference = "auto" | RelayKind;
-
-export interface RelayTarget {
-  kind: RelayKind;
-  url: string;
-}
 
 export interface RelayUrlOptions {
-  language?: string;
-  voiceRelayUrl?: string;
-  openAiRelayUrl?: string;
+  relayUrl?: string;
   browserProtocol?: string;
   browserHost?: string;
-  primaryPreference?: RelayPrimaryPreference;
 }
 
 export interface RelaySocketLike {
@@ -28,25 +18,16 @@ export interface RelaySocketLike {
 }
 
 interface RelayMessageContext<TJsonMessage extends Record<string, unknown>> {
-  target: RelayTarget;
-  isFailover: boolean;
   connector: RelayConnector<TJsonMessage>;
 }
 
 interface RelayConnectedContext {
-  target: RelayTarget;
-  isFailover: boolean;
+  isReconnect: boolean;
   connector: RelayConnector<Record<string, unknown>>;
 }
 
-interface RelayFailoverContext {
-  from: RelayTarget;
-  to: RelayTarget;
-  reason: string;
-}
-
 interface RelayConnectorOptions<TJsonMessage extends Record<string, unknown>> {
-  targets: RelayTarget[];
+  url: string;
   buildInitMessage: () => unknown;
   createSocket?: (url: string) => RelaySocketLike;
   readyTimeoutMs?: number;
@@ -62,61 +43,15 @@ interface RelayConnectorOptions<TJsonMessage extends Record<string, unknown>> {
     context: RelayMessageContext<TJsonMessage>
   ) => void;
   onConnected?: (context: RelayConnectedContext) => void;
-  onReconnecting?: (attempt: number, maxAttempts: number, target: RelayTarget) => void;
-  onFailover?: (context: RelayFailoverContext) => void;
+  onReconnecting?: (attempt: number, maxAttempts: number) => void;
   onPermanentFailure?: (error: Error) => void;
 }
 
-const DEFAULT_VOICE_RELAY_PORT = "8766";
-const DEFAULT_OPENAI_RELAY_PORT = "8767";
-const DEFAULT_VOICE_RELAY_PATH = "/ws/voice";
-const DEFAULT_OPENAI_RELAY_PATH = "/ws/openai-voice";
+const DEFAULT_RELAY_PORT = "8767";
+const DEFAULT_RELAY_PATH = "/ws/openai-voice";
 const READY_STATE_OPEN = 1;
 
-export function isChineseVoiceLanguage(language?: string): boolean {
-  if (!language) return false;
-  const normalized = language.trim().toLowerCase();
-  return (
-    normalized === "zh" ||
-    normalized.startsWith("zh-") ||
-    normalized.includes("chinese") ||
-    normalized.includes("中文")
-  );
-}
-
-function deriveUrlFromBrowser(
-  browserProtocol?: string,
-  browserHost?: string,
-  port?: string,
-  pathname = DEFAULT_VOICE_RELAY_PATH
-): string | null {
-  if (!browserProtocol || !browserHost) return null;
-  try {
-    const protocol = browserProtocol === "https:" ? "wss:" : "ws:";
-    const url = new URL(`${protocol}//${browserHost}${pathname}`);
-    if (port) url.port = port;
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
-function deriveSiblingRelayUrl(
-  baseUrl: string,
-  options: { port?: string; pathname?: string }
-): string {
-  const url = new URL(baseUrl);
-  if (typeof options.port === "string") {
-    url.port = options.port;
-  }
-  if (typeof options.pathname === "string") {
-    url.pathname = options.pathname;
-  }
-  return url.toString();
-}
-
-function isLocalBrowserHost(browserHost?: string): boolean {
-  if (!browserHost) return false;
+function isLocalBrowserHost(browserHost: string): boolean {
   const normalized = browserHost.replace(/:\d+$/, "").toLowerCase();
   return (
     normalized === "localhost" ||
@@ -126,96 +61,18 @@ function isLocalBrowserHost(browserHost?: string): boolean {
   );
 }
 
-export function resolveRelayUrls(options: RelayUrlOptions): {
-  voiceRelayUrl: string;
-  openAiRelayUrl: string;
-} {
-  const shouldUseSameOriginProxy =
-    !!options.browserProtocol &&
-    !!options.browserHost &&
-    !isLocalBrowserHost(options.browserHost);
-
-  const voiceRelayUrl =
-    options.voiceRelayUrl ||
-    (shouldUseSameOriginProxy
-      ? deriveUrlFromBrowser(
-          options.browserProtocol,
-          options.browserHost,
-          undefined,
-          DEFAULT_VOICE_RELAY_PATH
-        )
-      : null) ||
-    deriveUrlFromBrowser(
-      options.browserProtocol,
-      options.browserHost,
-      DEFAULT_VOICE_RELAY_PORT,
-      DEFAULT_VOICE_RELAY_PATH
-    ) ||
-    `ws://localhost:${DEFAULT_VOICE_RELAY_PORT}`;
-
-  const openAiRelayUrl =
-    options.openAiRelayUrl ||
-    (() => {
-      try {
-        const voiceUrl = new URL(voiceRelayUrl);
-        if (
-          shouldUseSameOriginProxy ||
-          (!voiceUrl.port && voiceUrl.pathname === DEFAULT_VOICE_RELAY_PATH)
-        ) {
-          return deriveSiblingRelayUrl(voiceRelayUrl, {
-            pathname: DEFAULT_OPENAI_RELAY_PATH,
-          });
-        }
-        return deriveSiblingRelayUrl(voiceRelayUrl, {
-          port: DEFAULT_OPENAI_RELAY_PORT,
-        });
-      } catch {
-        return shouldUseSameOriginProxy
-          ? deriveUrlFromBrowser(
-              options.browserProtocol,
-              options.browserHost,
-              undefined,
-              DEFAULT_OPENAI_RELAY_PATH
-            ) || `ws://localhost:${DEFAULT_OPENAI_RELAY_PORT}`
-          : `ws://localhost:${DEFAULT_OPENAI_RELAY_PORT}`;
-      }
-    })();
-
-  return { voiceRelayUrl, openAiRelayUrl };
-}
-
-export function buildRelayTargets(options: RelayUrlOptions): RelayTarget[] {
-  const { voiceRelayUrl, openAiRelayUrl } = resolveRelayUrls(options);
-  if (options.primaryPreference === "voice") {
-    return [
-      { kind: "voice", url: voiceRelayUrl },
-      { kind: "openai", url: openAiRelayUrl },
-    ];
+/** The configured relay URL, else the same-origin relay path (or the local relay port in dev). */
+export function resolveRelayUrl(options: RelayUrlOptions): string {
+  if (options.relayUrl) return options.relayUrl;
+  const { browserProtocol, browserHost } = options;
+  if (!browserProtocol || !browserHost) return `ws://localhost:${DEFAULT_RELAY_PORT}`;
+  try {
+    const url = new URL(`${browserProtocol === "https:" ? "wss:" : "ws:"}//${browserHost}${DEFAULT_RELAY_PATH}`);
+    if (isLocalBrowserHost(browserHost)) url.port = DEFAULT_RELAY_PORT;
+    return url.toString();
+  } catch {
+    return `ws://localhost:${DEFAULT_RELAY_PORT}`;
   }
-  if (options.primaryPreference === "openai") {
-    return [
-      { kind: "openai", url: openAiRelayUrl },
-      { kind: "voice", url: voiceRelayUrl },
-    ];
-  }
-  return [
-    { kind: "voice", url: voiceRelayUrl },
-    { kind: "openai", url: openAiRelayUrl },
-  ];
-}
-
-export function resolveRelayPrimaryPreference(
-  value?: string | null,
-): RelayPrimaryPreference {
-  const normalized = value?.trim().toLowerCase();
-  if (normalized === "voice" || normalized === "openai") {
-    return normalized;
-  }
-  return "voice";
-}
-
-export function relayDisplayName(kind: RelayKind): string {
-  return kind === "voice" ? "voice relay" : "OpenAI voice relay";
 }
 
 export function isRecoverableRelayErrorMessage(message?: string): boolean {
@@ -238,7 +95,7 @@ function normalizeBinaryData(data: unknown): ArrayBuffer | null {
 }
 
 export class RelayConnector<TJsonMessage extends Record<string, unknown>> {
-  private readonly targets: RelayTarget[];
+  private readonly url: string;
   private readonly buildInitMessage: () => unknown;
   private readonly createSocket: (url: string) => RelaySocketLike;
   private readonly readyTimeoutMs: number;
@@ -249,19 +106,17 @@ export class RelayConnector<TJsonMessage extends Record<string, unknown>> {
   private readonly onBinaryMessage: RelayConnectorOptions<TJsonMessage>["onBinaryMessage"];
   private readonly onConnected?: RelayConnectorOptions<TJsonMessage>["onConnected"];
   private readonly onReconnecting?: RelayConnectorOptions<TJsonMessage>["onReconnecting"];
-  private readonly onFailover?: RelayConnectorOptions<TJsonMessage>["onFailover"];
   private readonly onPermanentFailure?: RelayConnectorOptions<TJsonMessage>["onPermanentFailure"];
 
   private socket: RelaySocketLike | null = null;
-  private currentIndex = -1;
-  private currentTarget: RelayTarget | null = null;
   private ready = false;
   private destroyed = false;
-  private failoverPromise: Promise<RelayTarget> | null = null;
+  private connectedOnce = false;
+  private reconnectPromise: Promise<void> | null = null;
   private attemptSerial = 0;
 
   constructor(options: RelayConnectorOptions<TJsonMessage>) {
-    this.targets = options.targets;
+    this.url = options.url;
     this.buildInitMessage = options.buildInitMessage;
     this.createSocket =
       options.createSocket ||
@@ -274,38 +129,28 @@ export class RelayConnector<TJsonMessage extends Record<string, unknown>> {
     this.onBinaryMessage = options.onBinaryMessage;
     this.onConnected = options.onConnected;
     this.onReconnecting = options.onReconnecting;
-    this.onFailover = options.onFailover;
     this.onPermanentFailure = options.onPermanentFailure;
-  }
-
-  get target(): RelayTarget | null {
-    return this.currentTarget;
   }
 
   get isReady(): boolean {
     return this.ready;
   }
 
-  get canFailover(): boolean {
-    return this.targets.length > 1;
-  }
-
-  async connect(): Promise<RelayTarget> {
+  async connect(): Promise<void> {
     this.destroyed = false;
-    return this.connectCandidates(
-      this.targets.map((_, index) => index),
-      false
-    );
+    try {
+      await this.open();
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      this.onPermanentFailure?.(failure);
+      throw failure;
+    }
   }
 
-  async failover(reason: string): Promise<RelayTarget | null> {
-    if (this.destroyed || this.currentIndex < 0) {
-      return null;
-    }
-    if (this.failoverPromise) return this.failoverPromise;
-
-    const from = this.currentTarget;
-    const disconnectedIndex = this.currentIndex;
+  /** Drop the current socket and retry the relay, then report permanent failure. */
+  reconnect(): Promise<void> | null {
+    if (this.destroyed || !this.connectedOnce) return null;
+    if (this.reconnectPromise) return this.reconnectPromise;
 
     this.ready = false;
     const activeSocket = this.socket;
@@ -318,61 +163,29 @@ export class RelayConnector<TJsonMessage extends Record<string, unknown>> {
       }
     }
 
-    this.failoverPromise = this.reconnectThenFailover(
-      disconnectedIndex,
-      from,
-      reason,
-    ).finally(() => {
-      this.failoverPromise = null;
+    this.reconnectPromise = this.retry().finally(() => {
+      this.reconnectPromise = null;
     });
-
-    return this.failoverPromise;
+    return this.reconnectPromise;
   }
 
-  /** Try reconnecting to the same target first; only failover to
-   *  alternatives if all reconnect attempts are exhausted. */
-  private async reconnectThenFailover(
-    disconnectedIndex: number,
-    from: RelayTarget | null,
-    reason: string,
-  ): Promise<RelayTarget> {
-    // Attempt reconnection to the same target
+  private async retry(): Promise<void> {
     for (let attempt = 1; attempt <= this.reconnectAttempts; attempt++) {
       if (this.destroyed) break;
-
-      const delay = this.reconnectDelayMs * attempt;
-      this.onReconnecting?.(attempt, this.reconnectAttempts, this.targets[disconnectedIndex]);
-      await new Promise((r) => setTimeout(r, delay));
-
+      this.onReconnecting?.(attempt, this.reconnectAttempts);
+      await new Promise((r) => setTimeout(r, this.reconnectDelayMs * attempt));
       if (this.destroyed) break;
-
       try {
-        const target = await this.connectCandidate(disconnectedIndex, false);
-        return target;
+        await this.open();
+        return;
       } catch {
         // retry
       }
     }
-
-    // All reconnect attempts exhausted — fall through to alternative targets
     if (this.destroyed) throw new Error("Connector destroyed during reconnect");
-
-    if (this.targets.length < 2) {
-      const err = new Error("Voice relay reconnect failed — no alternative targets");
-      this.onPermanentFailure?.(err);
-      throw err;
-    }
-
-    const candidateIndices = this.targets
-      .map((_, index) => index)
-      .filter((index) => index !== disconnectedIndex);
-
-    return this.connectCandidates(
-      candidateIndices,
-      true,
-      from ?? undefined,
-      reason
-    );
+    const err = new Error("Voice relay reconnect failed");
+    this.onPermanentFailure?.(err);
+    throw err;
   }
 
   sendJson(payload: unknown): boolean {
@@ -396,49 +209,17 @@ export class RelayConnector<TJsonMessage extends Record<string, unknown>> {
     }
   }
 
-  private async connectCandidates(
-    candidateIndices: number[],
-    isFailover: boolean,
-    from?: RelayTarget,
-    reason?: string
-  ): Promise<RelayTarget> {
-    let lastError: Error | null = null;
-
-    for (const index of candidateIndices) {
-      try {
-        const target = await this.connectCandidate(index, isFailover);
-        if (isFailover && from && from.url !== target.url) {
-          this.onFailover?.({ from, to: target, reason: reason || "relay failover" });
-        }
-        return target;
-      } catch (error) {
-        lastError =
-          error instanceof Error ? error : new Error(String(error));
-      }
-    }
-
-    const finalError =
-      lastError || new Error("All voice relay targets failed");
-    this.onPermanentFailure?.(finalError);
-    throw finalError;
-  }
-
-  private connectCandidate(
-    index: number,
-    isFailover: boolean
-  ): Promise<RelayTarget> {
-    const target = this.targets[index];
+  private open(): Promise<void> {
     const attemptId = ++this.attemptSerial;
+    const isReconnect = this.connectedOnce;
 
-    return new Promise<RelayTarget>((resolve, reject) => {
-      const socket = this.createSocket(target.url);
+    return new Promise<void>((resolve, reject) => {
+      const socket = this.createSocket(this.url);
       if (this.binaryType) {
         socket.binaryType = this.binaryType;
       }
 
       this.socket = socket;
-      this.currentIndex = index;
-      this.currentTarget = target;
       this.ready = false;
 
       let settled = false;
@@ -450,7 +231,7 @@ export class RelayConnector<TJsonMessage extends Record<string, unknown>> {
         }
         if (!settled) {
           settled = true;
-          reject(new Error(`${relayDisplayName(target.kind)} timed out before ready`));
+          reject(new Error("Voice relay timed out before ready"));
         }
       }, this.readyTimeoutMs);
 
@@ -480,11 +261,7 @@ export class RelayConnector<TJsonMessage extends Record<string, unknown>> {
 
         const binary = normalizeBinaryData(event.data);
         if (binary) {
-          this.onBinaryMessage?.(binary, {
-            target,
-            isFailover,
-            connector: this,
-          });
+          this.onBinaryMessage?.(binary, { connector: this });
           return;
         }
 
@@ -499,30 +276,26 @@ export class RelayConnector<TJsonMessage extends Record<string, unknown>> {
 
         if (message.type === "ready" && !this.ready) {
           this.ready = true;
+          this.connectedOnce = true;
           clear();
           if (!settled) {
             settled = true;
             this.onConnected?.({
-              target,
-              isFailover,
+              isReconnect,
               connector: this as unknown as RelayConnector<Record<string, unknown>>,
             });
-            resolve(target);
+            resolve();
           }
         }
 
-        this.onJsonMessage(message, {
-          target,
-          isFailover,
-          connector: this,
-        });
+        this.onJsonMessage(message, { connector: this });
       };
 
       socket.onerror = () => {
         if (settled || this.destroyed || this.ready) return;
         clear();
         settled = true;
-        reject(new Error(`${relayDisplayName(target.kind)} websocket error`));
+        reject(new Error("Voice relay websocket error"));
       };
 
       socket.onclose = () => {
@@ -532,7 +305,7 @@ export class RelayConnector<TJsonMessage extends Record<string, unknown>> {
         if (!this.ready) {
           if (!settled) {
             settled = true;
-            reject(new Error(`${relayDisplayName(target.kind)} closed before ready`));
+            reject(new Error("Voice relay closed before ready"));
           }
           return;
         }
@@ -540,7 +313,7 @@ export class RelayConnector<TJsonMessage extends Record<string, unknown>> {
         if (socket !== this.socket) return;
         this.socket = null;
         this.ready = false;
-        void this.failover(`${relayDisplayName(target.kind)} disconnected`).catch(() => {
+        void this.reconnect()?.catch(() => {
           // onPermanentFailure already handles the user-facing surface
         });
       };

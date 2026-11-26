@@ -130,7 +130,7 @@ export async function POST(req: Request) {
     const remainingAfterThis = Math.max(0, maxTurns - completedTurns - 1);
     const initialFeedback = (attempt.feedback ?? {}) as { summary?: string };
 
-    const provider = getProvider(REPORT_MODEL);
+    const provider = getProvider();
     const messages = buildPrepFollowUpPrompt({
       interview: {
         title: interview.title,

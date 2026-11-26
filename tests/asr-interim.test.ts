@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { cleanPeriodArtifacts, mergeAsrFinal, mergeClientAsrInterim, stripInterimPunctuation, stripIsolatedCjk, trimCrossTurnOverlap } from "@/lib/voice/asr-interim";
 
-test("authoritative Qwen drafts remove revised phantom words and preserve exact final correction", () => {
+test("authoritative replacement drafts remove revised phantom words and preserve exact final correction", () => {
   let draft = mergeClientAsrInterim("", "Thank you Hello we can hello", "replace");
   draft = mergeClientAsrInterim(draft, "Hello. Can you hear me?", "replace");
   assert.equal(draft, "Hello. Can you hear me?");

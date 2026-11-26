@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { isBrowserPlayableTtsContentType } from "../src/lib/voice/tts-content-type";
 
-test("accepts the MP3 response Seed TTS returns for a WAV preference", () => {
+test("accepts an MP3 response for a WAV preference", () => {
   assert.equal(isBrowserPlayableTtsContentType("audio/mpeg"), true);
   assert.equal(isBrowserPlayableTtsContentType("audio/mp3; charset=binary"), true);
 });

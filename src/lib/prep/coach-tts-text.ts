@@ -1,7 +1,7 @@
-/** Max characters sent to Seed TTS for coach playback (long feedback often returns empty audio). */
+/** Max characters sent to speech for coach playback. */
 export const COACH_TTS_MAX_CHARS = 360;
 
-/** Normalize punctuation that can cause Seed TTS to return success with zero audio. */
+/** Normalize punctuation before speech synthesis. */
 export function sanitizeTtsText(text: string): string {
   return text
     .trim()
@@ -37,18 +37,4 @@ export function truncateForCoachTts(
 
 export function prepareCoachTtsText(text: string): string {
   return truncateForCoachTts(sanitizeTtsText(text));
-}
-
-/** Split long coach feedback for per-sentence TTS when a single request returns no audio. */
-export function splitCoachTtsSegments(text: string, maxSegments = 6): string[] {
-  const sanitized = sanitizeTtsText(text);
-  if (!sanitized) return [];
-
-  const parts = sanitized
-    .split(/(?<=[。！？.!?])\s*/)
-    .map((p) => p.trim())
-    .filter(Boolean);
-
-  if (parts.length <= 1) return [sanitized];
-  return parts.slice(0, maxSegments);
 }

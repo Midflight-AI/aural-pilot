@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     return new Response(JSON.stringify({ error: "Description is required" }), { status: 400 });
   }
 
-  const provider = getProvider(GENERATOR_MODEL);
+  const provider = getProvider();
   const messages = buildGeneratorPrompt(description, durationMinutes, language, jobDescription, resumeText);
 
   const encoder = new TextEncoder();

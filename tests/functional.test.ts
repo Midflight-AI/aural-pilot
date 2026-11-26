@@ -79,7 +79,6 @@ function startAppServer(port: number): ChildProcess {
         ...process.env,
         NODE_ENV: "development",
         ENABLE_FUNCTIONAL_TEST_PAGES: "1",
-        NEXT_PUBLIC_VOICE_RELAY_URL: `ws://127.0.0.1:${port}/ws/voice`,
         NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL: `ws://127.0.0.1:${port}/ws/openai-voice`,
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -269,12 +268,10 @@ test("whiteboard renders and Mermaid conversion works with patched dependencies"
   await context.close();
 });
 
-test("English interviews try the voice relay first and fail over to OpenAI", async () => {
+test("interviews connect only to the GPT voice relay", async () => {
   const context = await browser.newContext({ locale: "en-US" });
   const page = await context.newPage();
-  await page.goto(
-    `${baseUrl}/functional-tests/voice?language=en&scenario=english-failover`,
-  );
+  await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=default`);
   await waitForCondition(
     async () =>
       (await page.getByTestId("harness-ready").textContent()) === "true",
@@ -288,32 +285,7 @@ test("English interviews try the voice relay first and fail over to OpenAI", asy
   const connections = await readRelayConnections(page);
   assert.deepEqual(
     connections.map((entry) => entry.path),
-    ["/ws/voice", "/ws/openai-voice"],
-  );
-
-  await context.close();
-});
-
-test("Chinese interviews also try the voice relay first and fail over to OpenAI", async () => {
-  const context = await browser.newContext({ locale: "en-US" });
-  const page = await context.newPage();
-  await page.goto(
-    `${baseUrl}/functional-tests/voice?language=zh-CN&scenario=chinese-failover`,
-  );
-  await waitForCondition(
-    async () =>
-      (await page.getByTestId("harness-ready").textContent()) === "true",
-    5_000,
-    "Expected functional voice harness mocks to be ready",
-  );
-  await page.getByRole("button", { name: "Start Interview" }).click();
-
-  await delay(3_500);
-
-  const connections = await readRelayConnections(page);
-  assert.deepEqual(
-    connections.map((entry) => entry.path),
-    ["/ws/voice", "/ws/openai-voice"],
+    ["/ws/openai-voice"],
   );
 
   await context.close();
@@ -389,12 +361,12 @@ test("voice interview keeps Thinking visible until the agent response returns", 
   await context.close();
 });
 
-test("Qwen snapshots replace phantom drafts in the actual voice UI and allow empty retractions", async () => {
+test("replacement transcript snapshots drop phantom drafts in the voice UI and allow empty retractions", async () => {
   const context = await browser.newContext({ locale: "en-US" });
   const page = await context.newPage();
   await page.route("**/api/voice/save", (route) => route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true}' }));
   await page.route("**/api/session/upload", (route) => route.fulfill({ status: 200, contentType: "application/json", body: '{"url":"","path":""}' }));
-  await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=qwen-transcript-revision`);
+  await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=transcript-revision`);
   await waitForCondition(async () => (await page.getByTestId("harness-ready").textContent()) === "true", 5_000);
   await page.getByRole("button", { name: "Start Interview" }).click();
   const status = page.getByTestId("voice-status-scroll");
@@ -416,7 +388,7 @@ test("live captions stay visible while drafts pulse across pending and resumed s
   const page = await context.newPage();
   await page.route("**/api/voice/save", (route) => route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true}' }));
   await page.route("**/api/session/upload", (route) => route.fulfill({ status: 200, contentType: "application/json", body: '{"url":"","path":""}' }));
-  await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=qwen-caption-stability`);
+  await page.goto(`${baseUrl}/functional-tests/voice?language=en&scenario=caption-stability`);
   await waitForCondition(async () => (await page.getByTestId("harness-ready").textContent()) === "true", 5_000);
   await page.getByRole("button", { name: "Start Interview" }).click();
   await page.getByTestId("live-user-transcript").waitFor({ state: "visible", timeout: 10_000 });
@@ -647,7 +619,7 @@ test("voice completion shows the farewell, waits for final save, and only then n
   assert.equal(
     relayMessages.some(
       ({ path, message }) =>
-        path === "/ws/voice" &&
+        path === "/ws/openai-voice" &&
         message.type === "playback_ended" &&
         message.utteranceId === "functional-farewell-1",
     ),

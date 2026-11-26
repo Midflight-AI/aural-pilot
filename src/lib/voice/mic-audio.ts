@@ -2,8 +2,8 @@ export const MIC_AUDIO_SAMPLE_RATE = 16_000;
 /** Capture granularity, kept small so audio-level metering stays smooth. */
 export const MIC_AUDIO_CHUNK_SAMPLES = 1_024;
 /**
- * Uplink packet size. Volcengine asks for 100-200ms of audio per packet and performs best at
- * 200ms for bidirectional streaming; packets outside that range degrade recognition.
+ * Uplink packet size: 200ms of audio per packet, which keeps relay traffic low without
+ * delaying transcription.
  */
 export const MIC_AUDIO_FRAME_SAMPLES = 3_200;
 /** Roughly 10s of frames held while a relay is still becoming ready. */

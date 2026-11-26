@@ -11,11 +11,7 @@ import {
     encodeMicAudioChunk,
     MIC_AUDIO_CHUNK_SAMPLES,
 } from "@/lib/voice/mic-audio";
-import {
-    buildRelayTargets,
-    RelayConnector,
-    resolveRelayPrimaryPreference,
-} from "@/lib/voice/relay-routing";
+import { RelayConnector, resolveRelayUrl } from "@/lib/voice/relay-routing";
 import { useCallback, useEffect, useRef } from "react";
 
 function extractAsrText(msg: Record<string, unknown>): string {
@@ -28,14 +24,11 @@ function extractAsrText(msg: Record<string, unknown>): string {
 }
 
 function relayAsrAvailable(): boolean {
-  return !!(
-    process.env.NEXT_PUBLIC_VOICE_RELAY_URL ||
-    process.env.NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL
-  );
+  return !!process.env.NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL;
 }
 
 /**
- * Continuous Volcengine ASR via voice relay `mic_test` mode (same as onboarding).
+ * Continuous GPT transcription via the voice relay's `mic_test` mode (same as onboarding).
  */
 export function useRelayAsrInput({
   language,
@@ -226,13 +219,8 @@ export function useRelayAsrInput({
       };
 
       const connector = new RelayConnector<Record<string, unknown>>({
-        targets: buildRelayTargets({
-          language,
-          voiceRelayUrl: process.env.NEXT_PUBLIC_VOICE_RELAY_URL,
-          openAiRelayUrl: process.env.NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL,
-          primaryPreference: resolveRelayPrimaryPreference(
-            process.env.NEXT_PUBLIC_VOICE_RELAY_PRIMARY,
-          ),
+        url: resolveRelayUrl({
+          relayUrl: process.env.NEXT_PUBLIC_OPENAI_VOICE_RELAY_URL,
           browserProtocol: window.location.protocol,
           browserHost: window.location.host,
         }),
@@ -253,8 +241,10 @@ export function useRelayAsrInput({
               publish();
             }
           } else if (msg.type === "disconnected") {
-            if (listeningRef.current && activeConnector.canFailover) {
-              void activeConnector.failover("mic test ASR disconnected");
+            if (listeningRef.current) {
+              void activeConnector.reconnect()?.catch(() => {
+                // onPermanentFailure stops listening
+              });
             }
           }
         },

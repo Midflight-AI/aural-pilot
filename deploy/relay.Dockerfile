@@ -8,6 +8,5 @@ COPY src/lib ./src/lib
 COPY tsconfig.json ./
 USER node
 ENV OPENAI_VOICE_RELAY_PORT=8767
-ENV VOICE_ASR_PRIMARY=openai
 EXPOSE 8767
 CMD ["node", "--import", "tsx", "server/openai-voice-relay.ts"]
